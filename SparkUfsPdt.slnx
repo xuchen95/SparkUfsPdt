@@ -1,0 +1,33 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Debug_XP" />
+    <BuildType Name="Release" />
+    <BuildType Name="Release_XP" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ExceptionDump/ExceptionDump.vcxproj" Id="23275500-02b0-466d-9fe5-b354aa5021e7">
+    <BuildType Solution="Debug_XP|*" Project="Debug" />
+    <BuildType Solution="Release_XP|*" Project="Release" />
+  </Project>
+  <Project Path="Serial/serial/serial.vcxproj" Id="a8517fb2-c74e-43bd-b3c6-b05d3fc11ecd">
+    <BuildType Solution="Debug_XP|x64" Project="Debug" />
+    <BuildType Solution="Release_XP|x64" Project="Release" />
+  </Project>
+  <Project Path="SparkLog/SparkLog.vcxproj" Id="774eaf09-3a14-4e54-bc5d-2920f9270b63">
+    <BuildType Solution="Debug_XP|x64" Project="Debug" />
+    <BuildType Solution="Release_XP|x64" Project="Release" />
+  </Project>
+  <Project Path="SparkUfsPdt/SparkUfsPdt.vcxproj" />
+  <Project Path="ThreadPool/ThreadPool.vcxproj" Id="e723ad0a-c35f-4467-aaea-753869c3db6f">
+    <BuildType Solution="Debug_XP|x64" Project="Debug" />
+    <BuildType Solution="Release_XP|x64" Project="Release" />
+  </Project>
+  <Project Path="UFS_LIB/libsparkusb/libsparkusb.vcxproj" Id="e9281919-3ad0-43fc-a9f6-06243c5377d3">
+    <Platform Project="Win32" />
+  </Project>
+  <Project Path="UFS_LIB/libtfcard_mfc/libtfcard_mfc.vcxproj" Id="f1b1cf07-b47d-499f-8471-fe4f92c97d30">
+    <Platform Project="Win32" />
+  </Project>
+</Solution>

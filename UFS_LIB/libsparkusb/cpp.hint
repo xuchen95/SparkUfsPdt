@@ -1,0 +1,2 @@
+#define LIBSPARKUSB_API __declspec(dllexport)
+#define LIBSPARKUSB_API __declspec(dllimport)

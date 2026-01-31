@@ -1,0 +1,10 @@
+// libtfcard_mfc.idl : type library source for libtfcard_mfc.dll
+// This file will be processed by the MIDL compiler to produce the
+// type library (libtfcard_mfc.tlb).
+
+[ uuid(88d39a9a-97b9-4d3c-b64a-e4c9d78b2aeb), version(1.0) ]
+library libtfcardmfc
+{
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+};
