@@ -1,25 +1,25 @@
-﻿// SparkUfsPdtDlg.h: 头文件
+﻿// SparkUfsPdtDlg.h: header file
 //
 
 #pragma once
-#include <afxcmn.h> // 添加此头文件以使用CProgressCtrl
+#include <afxcmn.h> // include this header to use `CProgressCtrl`
 #include <memory>
 
 
 static char g_UfsIsp[1024 * 512 * 2];
 
-// CSparkUfsPdtDlg 对话框
+// CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogEx
 {
-// 构造
+// Construction
 public:
     // 线程/端口数量常量定义
     static constexpr int UI_THREAD_COUNT = 16;
 
-	CSparkUfsPdtDlg(CWnd* pParent = nullptr);	// 标准构造函数
+	CSparkUfsPdtDlg(CWnd* pParent = nullptr);	// standard constructor
 	
 
-// 对话框数据
+// Dialog Data
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_SPARKUFSPDT_DIALOG };
 #endif
@@ -28,11 +28,11 @@ public:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 
 
-// 实现
+// Implementation
 protected:
 	HICON m_hIcon;
 
-	// 生成的消息映射函数
+	// Generated message map functions
 	virtual BOOL OnInitDialog();
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
@@ -43,17 +43,14 @@ public:
     afx_msg void OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult);
 
 protected:
-    // 进度条控件ID起始值（建议使用未被其他控件占用的ID范围）
+    // Progress control ID base (choose an ID range not used by other controls)
     static constexpr int IDC_S_UI_THREAD_BASE = 2000;
 
-    // 修复：添加进度条控件数组声明
+    // Fix: declare progress control array
     CProgressCtrl m_progress[UI_THREAD_COUNT];
 public:
-	static UINT DoThreadClickedButtonStartPdt(LPVOID pParam);
-	afx_msg void OnBnClickedBtnStartPdt();
+    afx_msg void OnBnClickedBtnStartPdt();
 
-    // New: move PDT work into an instance method so it can be invoked by a thread pool task
-    int RunPdtTask();
     // Run PDT for a specific port index (0-based) and report progress to UI
     int RunPdtTask(int portIndex);
 
@@ -64,8 +61,30 @@ public:
     static const UINT WM_TASK_PROGRESS = (WM_USER + 0x65);
     afx_msg LRESULT OnTaskProgress(WPARAM wParam, LPARAM lParam);
 
+    // Shared progress message structure used between worker code and UI handler
+    struct TaskProgressMsg {
+        int portIndex; // 0-based
+        int progress; // 0-100
+        int result; // final result code or 0 for ongoing
+        CString statusText;
+    };
+
+    // Append a line to the PDT run log (implemented in Run file)
+    static void AppendLogLine(const CString& line);
+
+    // Globals for log locking (defined in Run file)
+    static CRITICAL_SECTION g_logLock;
+    static bool g_logLockInited;
+
+    // Implementation entry point moved to a separate compilation unit. The
+    // wrapper methods in the dialog call this function which receives the
+    // port index and a pointer to the dialog instance for UI notifications.
+    friend int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
+
 	//CHAR m_szIspBuff[1024*512*2];
 	afx_msg void OnBnClickedBtnPdtIni();
+    void CreateListViewColumns();
+    void InitListViewItems();
 };
 
 

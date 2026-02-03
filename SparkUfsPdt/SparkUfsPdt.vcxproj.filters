@@ -44,6 +44,9 @@
     <ClCompile Include="pch.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="RunPdtTaskImpl.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SparkUfsPdt.rc">

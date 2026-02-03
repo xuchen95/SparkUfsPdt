@@ -1,5 +1,5 @@
 ﻿
-// SparkUfsPdt.cpp: 定义应用程序的类行为。
+// SparkUfsPdt.cpp: defines application behavior.
 //
 
 #include "pch.h"
@@ -19,15 +19,15 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtApp, CWinApp)
 END_MESSAGE_MAP()
 
 
-// CSparkUfsPdtApp 构造
+// CSparkUfsPdtApp constructor
 
 CSparkUfsPdtApp::CSparkUfsPdtApp()
 {
-	// 支持重新启动管理器
+	// Support Restart Manager
 	m_dwRestartManagerSupportFlags = AFX_RESTART_MANAGER_SUPPORT_RESTART;
 
-	// TODO: 在此处添加构造代码，
-	// 将所有重要的初始化放置在 InitInstance 中
+	// TODO: add construction code here,
+	// put all significant initialization in InitInstance
 }
 
 
@@ -36,13 +36,13 @@ CSparkUfsPdtApp::CSparkUfsPdtApp()
 CSparkUfsPdtApp theApp;
 
 
-// CSparkUfsPdtApp 初始化
+// CSparkUfsPdtApp initialization
 
 BOOL CSparkUfsPdtApp::InitInstance()
 {
-	// 如果应用程序存在以下情况，Windows XP 上需要 InitCommonControlsEx()
-	// 使用 ComCtl32.dll 版本 6 或更高版本来启用可视化方式，
-	//则需要 InitCommonControlsEx()。  否则，将无法创建窗口。
+    // On Windows XP, InitCommonControlsEx is required when using Common
+    // Controls version 6 or later to enable visual styles. Without it,
+    // window creation may fail.
 	INITCOMMONCONTROLSEX InitCtrls;
 	InitCtrls.dwSize = sizeof(InitCtrls);
 	// 将它设置为包括所有要在应用程序中使用的
@@ -55,42 +55,38 @@ BOOL CSparkUfsPdtApp::InitInstance()
 
 	AfxEnableControlContainer();
 
-	// 创建 shell 管理器，以防对话框包含
-	// 任何 shell 树视图控件或 shell 列表视图控件。
+    // Create the shell manager in case the dialog contains any
+    // shell tree view or shell list view controls.
 	CShellManager *pShellManager = new CShellManager;
 
-	// 激活“Windows Native”视觉管理器，以便在 MFC 控件中启用主题
+    // Activate "Windows Native" visual manager to enable themes in MFC controls
 	CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows));
 
-	// 标准初始化
-	// 如果未使用这些功能并希望减小
-	// 最终可执行文件的大小，则应移除下列
-	// 不需要的特定初始化例程
-	// 更改用于存储设置的注册表项
-	// TODO: 应适当修改该字符串，
-	// 例如修改为公司或组织名
-	SetRegistryKey(_T("应用程序向导生成的本地应用程序"));
+    // Standard initialization
+    // If these features are not used and you wish to reduce the size
+    // of the final executable, remove the unnecessary initialization
+    // routines below. Change the registry key used to store settings
+    // TODO: modify the string appropriately (company/organization name)
+    SetRegistryKey(_T("Local AppWizard-Generated Applications"));
 
 	CSparkUfsPdtDlg dlg;
 	m_pMainWnd = &dlg;
 	INT_PTR nResponse = dlg.DoModal();
 	if (nResponse == IDOK)
 	{
-		// TODO: 在此放置处理何时用
-		//  “确定”来关闭对话框的代码
+        // TODO: place code here to handle when the dialog is closed with OK
 	}
 	else if (nResponse == IDCANCEL)
 	{
-		// TODO: 在此放置处理何时用
-		//  “取消”来关闭对话框的代码
+        // TODO: place code here to handle when the dialog is closed with Cancel
 	}
 	else if (nResponse == -1)
 	{
-		TRACE(traceAppMsg, 0, "警告: 对话框创建失败，应用程序将意外终止。\n");
-		TRACE(traceAppMsg, 0, "警告: 如果您在对话框上使用 MFC 控件，则无法 #define _AFX_NO_MFC_CONTROLS_IN_DIALOGS。\n");
+        TRACE(traceAppMsg, 0, "Warning: dialog creation failed, application will terminate unexpectedly.\n");
+        TRACE(traceAppMsg, 0, "Warning: if you use MFC controls on the dialog, you cannot #define _AFX_NO_MFC_CONTROLS_IN_DIALOGS.\n");
 	}
 
-	// 删除上面创建的 shell 管理器。
+    // Delete the shell manager created above.
 	if (pShellManager != nullptr)
 	{
 		delete pShellManager;
@@ -100,8 +96,8 @@ BOOL CSparkUfsPdtApp::InitInstance()
 	ControlBarCleanUp();
 #endif
 
-	// 由于对话框已关闭，所以将返回 FALSE 以便退出应用程序，
-	//  而不是启动应用程序的消息泵。
-	return FALSE;
+    // Since the dialog has been closed, return FALSE so that we exit the
+    // application rather than start the application's message pump.
+    return FALSE;
 }
 

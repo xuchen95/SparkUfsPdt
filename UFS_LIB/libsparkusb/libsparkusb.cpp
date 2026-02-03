@@ -360,9 +360,9 @@ int spark::sm3350::CSparkSm3350Util::EnumSm3350(int nDriverMode /*= 0*/)
         u08Id = pPortInfo[0x212];
         if (u08Id < MAX_DEVICE_CNT)
         {
-            if (gu08TesterMap[u08Id] == UCHAR_MAX)
+            if (gu08TesterMap[i] == UCHAR_MAX)
             {
-                gu08TesterMap[u08Id] = i;
+                gu08TesterMap[i] = u08Id;
                 gu08TesterCnt++;
             }
         }
@@ -415,34 +415,6 @@ UCHAR spark::sm3350::CSparkSm3350Util::GetTesterIndex(UCHAR id)
     return gu08TesterMap[id];
 }
 
-//UCHAR spark::sm3350::CSparkSm3350Util::GetTesterIndex(UCHAR order)
-//{
-//    int idx = UCHAR_MAX;
-//
-//    if (gu08TesterCnt)
-//    {
-//        for (size_t i = 0; i < MAX_TESTER_LUN; i++)
-//        {
-//            for (size_t j = 0; j < MAX_TESTER_PER_LUN; j++)
-//            {
-//                if (gu08TesterMap[i][j] != UCHAR_MAX)
-//                {
-//                    if (order == 0)
-//                    {
-//                        idx = gu08TesterMap[i][j];
-//                        return idx;
-//                    }
-//                    else
-//                    {
-//                        order--;
-//                    }
-//                }
-//            }
-//        }
-//    }
-//
-//    return idx;
-//}
 
 PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo(UCHAR id)
 {

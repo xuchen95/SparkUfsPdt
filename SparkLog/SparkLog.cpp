@@ -1,4 +1,8 @@
-﻿// SparkLog.cpp : 定义静态库的函数。
+﻿// SparkLog.cpp : implementation of the SparkLog static library.
+// This module provides a small asynchronous logging facility used by the
+// production test tooling. It exposes an enqueue API to push structured
+// pdt_log_config_t records that are consumed by a background thread and
+// written to a UTF-8 encoded log file under the LogInfo directory.
 //
 
 #include "pch.h"
@@ -31,11 +35,14 @@ static const wchar_t* LOG_FILE = L".\\LogInfo\\TF_LOG.log";
 
 // No AnsiToW conversion needed in multibyte build; format ANSI strings directly.
 
+// Ensure the log directory exists. No-op if already present.
 static void EnsureLogDir()
 {
     // Create directory if not exists
     CreateDirectoryW(LOG_DIR, NULL);
 }
+
+// SparkLog_EnqueueLine removed - no longer used.
 
 static void LogWorker()
 {
