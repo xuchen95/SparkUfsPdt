@@ -4,9 +4,9 @@
 #pragma once
 #include <afxcmn.h> // include this header to use `CProgressCtrl`
 #include <memory>
+#include "libsparkusb.h"
 
-
-static char g_UfsIsp[1024 * 512 * 2];
+static char g_UfsIsp[UFS_ISP_SIZE];
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogEx
@@ -79,8 +79,8 @@ public:
     // Implementation entry point moved to a separate compilation unit. The
     // wrapper methods in the dialog call this function which receives the
     // port index and a pointer to the dialog instance for UI notifications.
-    friend int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
-
+    friend int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
+    friend int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
 	//CHAR m_szIspBuff[1024*512*2];
 	afx_msg void OnBnClickedBtnPdtIni();
     void CreateListViewColumns();

@@ -61,6 +61,16 @@ void CSparkUfsPdtDlg::AppendLogLine(const CString& line)
 static int RunStage(CSparkUfsPdtDlg* pDlg, int portIndex, LPCTSTR stageName, const std::function<int()>& callExpr,
     StageRecord records[], int maxStages, int &recCount, LARGE_INTEGER freq)
 {
+    // Post a "stage started" UI update so the list control status column
+    // shows the currently executing stage while callExpr runs. Use the
+    // current recCount to compute a pre-stage progress value.
+    if (pDlg)
+    {
+        int preProgress = (int)(((recCount) * 100) / maxStages);
+        TaskProgressMsg* pstart = new TaskProgressMsg{ portIndex, preProgress, 0, CString(stageName) };
+        pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pstart, 0);
+    }
+
     LARGE_INTEGER t0, t1; QueryPerformanceCounter(&t0);
     int rc = callExpr();
     QueryPerformanceCounter(&t1);
@@ -87,7 +97,7 @@ static int RunStage(CSparkUfsPdtDlg* pDlg, int portIndex, LPCTSTR stageName, con
 // function executes a series of hardware operations (power, init, ISP
 // write, etc.) and records timing / results for each stage. Progress
 // and final result are reported back to the UI thread via messages.
-int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 {
     auto tStart = std::chrono::steady_clock::now();
     int ret = 0;
@@ -97,28 +107,15 @@ int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     StageRecord records[MAX_STAGES];
     int recCount = 0;
 
-    PST_DEVICE_INFO pDeviceInfo = CSparkSm3350Util::GetDeviceInfo((UCHAR)portIndex);
-    if (!pDeviceInfo)
-    {
-        ret = -1;
-        CString line;
-        CTime now = CTime::GetCurrentTime();
-        line.Format(_T("%s | Port %d | ERROR: device not found"), now.Format(_T("%Y-%m-%d %H:%M:%S")), portIndex+1);
-        CSparkUfsPdtDlg::AppendLogLine(line);
-        // notify UI
-        TaskProgressMsg* msg = new TaskProgressMsg{portIndex, 0, ret, _T("Device not found")} ;
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)msg, 0);
-        return ret;
-    }
-
-    UCHAR u08Idx = CSparkSm3350Util::GetTesterIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08Idx);
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    PST_DEVICE_INFO pDeviceInfo = CSparkSm3350Util::GetDeviceInfo((UCHAR)u08PhyIdx);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     LARGE_INTEGER freq;
     if (!QueryPerformanceFrequency(&freq)) freq.QuadPart = 1000;
 
     
 
-    if (ERROR_SUCCESS == sm3350.DeviceSelect(u08Idx))
+    if (ERROR_SUCCESS == sm3350.DeviceSelect(u08PhyIdx))
     {
         ret = RunStage(pDlg, portIndex, _T("UfsPowerOff"), [&](){ return sm3350.UfsPowerOff(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsPowerOn"), [&](){ return sm3350.UfsPowerOn(pData); }, records, MAX_STAGES, recCount, freq);
@@ -126,7 +123,7 @@ int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsCardInit"), [&](){ return sm3350.UfsCardInit(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("VccOffForceRom"), [&](){ return sm3350.VccOffForceRom(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpStartMode"), [&](){ return sm3350.UfsMpStartMode(pData); }, records, MAX_STAGES, recCount, freq);
-        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&](){ return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), FALSE); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&](){ return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), UFS_ERASE_ALL_BLOCK); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpExit"), [&](){ return sm3350.UfsMpExit(pData); }, records, MAX_STAGES, recCount, freq);
     }
 
@@ -147,6 +144,58 @@ int RunPdtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     // final UI notify
     TaskProgressMsg* finalMsg = new TaskProgressMsg{portIndex, 100, ret, (ret==ERROR_SUCCESS)?_T("Success"):_T("Failed")};
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)finalMsg, 0);
+
+    return ret;
+}
+
+int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+{
+    auto tStart = std::chrono::steady_clock::now();
+    int ret = 0;
+    CHAR pData[512];
+    CHAR pPortInfo[1024];
+    const int MAX_STAGES = 16;
+    StageRecord records[MAX_STAGES];
+    int recCount = 0;
+
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    PST_DEVICE_INFO pDeviceInfo = CSparkSm3350Util::GetDeviceInfo((UCHAR)u08PhyIdx);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    LARGE_INTEGER freq;
+    if (!QueryPerformanceFrequency(&freq)) freq.QuadPart = 1000;
+
+
+
+    if (ERROR_SUCCESS == sm3350.DeviceSelect(u08PhyIdx))
+    {
+        ret = RunStage(pDlg, portIndex, _T("UfsPowerOff"), [&]() { return sm3350.UfsPowerOff(pData); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsPowerOn"), [&]() { return sm3350.UfsPowerOn(pData); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsReadPortInfo"), [&]() { return sm3350.UfsReadPortInfo(pPortInfo); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsCardInit"), [&]() { return sm3350.UfsCardInit(pData); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("VccOffForceRom"), [&]() { return sm3350.VccOffForceRom(pData); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpStartMode"), [&]() { return sm3350.UfsMpStartMode(pData); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&]() { return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), UFS_ERASE_GOOD_BLOCK); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpExit"), [&]() { return sm3350.UfsMpExit(pData); }, records, MAX_STAGES, recCount, freq);
+    }
+
+    auto tEnd = std::chrono::steady_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - tStart).count();
+
+    // write log
+    CTime now = CTime::GetCurrentTime();
+    CString header;
+    header.Format(_T("%s | Port %d | TotalMs=%lld | Result=0x%X"), now.Format(_T("%Y-%m-%d %H:%M:%S")), portIndex + 1, (long long)dur, ret);
+    CSparkUfsPdtDlg::AppendLogLine(header);
+    for (int i = 0; i < recCount; ++i)
+    {
+        CString line;
+        line.Format(_T("%s | Port %d | Stage=%s | code=0x%X | %.3f ms"), records[i].timeStr, portIndex + 1, records[i].name.GetString(), records[i].code, records[i].ms);
+        CSparkUfsPdtDlg::AppendLogLine(line);
+    }
+
+    // final UI notify
+    TaskProgressMsg* finalMsg = new TaskProgressMsg{ portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed") };
     if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)finalMsg, 0);
 
     return ret;

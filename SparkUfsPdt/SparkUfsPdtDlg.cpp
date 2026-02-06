@@ -198,7 +198,7 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
 
 int CSparkUfsPdtDlg::RunPdtTask(int portIndex)
 {
-    return RunPdtTaskImpl(portIndex, this);
+    return RunFT3TaskImpl(portIndex, this);
 }
 
 // UI thread message handler for progress updates

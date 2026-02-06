@@ -29,6 +29,12 @@
 #define MAX_TINY_CODE_SIZE      (32768)
 #define MAX_BOOT_INFO_SIZE      (3072)
 
+#define UFS_ISP_SIZE     (1024 *512 *2)
+
+
+#define UFS_ERASE_ALL_BLOCK    (0)
+#define UFS_ERASE_GOOD_BLOCK    (1)
+
 typedef union
 {
     CHAR        int8[512];
@@ -95,6 +101,7 @@ namespace spark
             static PST_DEVICE_INFO GetDeviceInfo();
             static PST_DEVICE_INFO GetDeviceInfo(UCHAR id);
             static UCHAR GetTesterIndex(UCHAR id);
+            static UCHAR GetPhysicalIndex(UCHAR testerIdx);
             //static UCHAR GetTesterIndex(UCHAR order);
 
             int GetDevicePath(unsigned char idx, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned);

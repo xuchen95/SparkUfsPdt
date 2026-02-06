@@ -415,6 +415,18 @@ UCHAR spark::sm3350::CSparkSm3350Util::GetTesterIndex(UCHAR id)
     return gu08TesterMap[id];
 }
 
+UCHAR spark::sm3350::CSparkSm3350Util::GetPhysicalIndex(UCHAR testerIdx)
+{
+    for (UCHAR i = 0; i < gu08DeviceCnt; i++)
+    {
+        if (gu08TesterMap[i] == testerIdx)
+        {
+            return i;
+        }
+    }
+    return UCHAR_MAX;
+}
+
 
 PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo(UCHAR id)
 {
