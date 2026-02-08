@@ -7,7 +7,7 @@
 #include "SparkUfsPdtDlg.h"
 #include "afxdialogex.h"
 #include "libsparkusb.h"
-//#include "../CommonLibs/ThreadPool/ThreadPool.h"
+#include "CDialogSetting.h"
 #include "ThreadPool.h"
 
 #ifdef _DEBUG
@@ -42,7 +42,7 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_SCAN_DEVICE, &CSparkUfsPdtDlg::OnBnClickedBtnScanDevice)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_DEVICE, &CSparkUfsPdtDlg::OnNMCustomdrawListDevice)
     ON_BN_CLICKED(IDC_BTN_START_PDT, &CSparkUfsPdtDlg::OnBnClickedBtnStartPdt)
-    ON_BN_CLICKED(IDC_BTN_PDT_INI, &CSparkUfsPdtDlg::OnBnClickedBtnPdtIni)
+	ON_BN_CLICKED(IDC_BTN_PDT_SETTING, &CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting)
     ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
 END_MESSAGE_MAP()
 
@@ -433,4 +433,33 @@ void CSparkUfsPdtDlg::InitListViewItems()
             m_progress[i].SetPos(0);
         }
     }
+}
+
+void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
+{
+    char currentDirectory[MAX_PATH] = {};
+	GetCurrentDirectory(MAX_PATH, currentDirectory);
+	CString initialDir;
+	initialDir.Format(_T("%hs"), currentDirectory);
+
+	CFileDialog dlg(TRUE, _T("ini"), _T("setting.ini"), OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
+		_T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
+	dlg.m_ofn.lpstrInitialDir = initialDir;
+
+	if (dlg.DoModal() != IDOK)
+	{
+		return;
+	}
+
+	CString path = dlg.GetPathName();
+	PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
+	if (!CDialogSetting::LoadFromIni(path, pOption))
+	{
+		MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
+		return;
+	}
+
+	CDialogSetting settingDlg(this);
+	settingDlg.SetUfsOption(pOption);
+	settingDlg.DoModal();
 }

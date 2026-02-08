@@ -354,6 +354,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="CardDef.h" />
+    <ClInclude Include="CDialogBase.h" />
+    <ClInclude Include="CDialogMainSetting.h" />
+    <ClInclude Include="CDialogQcSetting.h" />
+    <ClInclude Include="CDialogSetting.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Resource.h" />
@@ -362,6 +366,10 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CDialogBase.cpp" />
+    <ClCompile Include="CDialogMainSetting.cpp" />
+    <ClCompile Include="CDialogQcSetting.cpp" />
+    <ClCompile Include="CDialogSetting.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_XP|x64'">Create</PrecompiledHeader>

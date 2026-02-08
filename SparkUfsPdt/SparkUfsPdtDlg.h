@@ -41,6 +41,7 @@ protected:
 public:
 	afx_msg void OnBnClickedBtnScanDevice();
     afx_msg void OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnBnClickedBtnPdtSetting();
 
 protected:
     // Progress control ID base (choose an ID range not used by other controls)
