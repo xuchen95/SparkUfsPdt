@@ -157,3 +157,20 @@ PDT_LOG | func=UfsMpExit | port=3 | time=2026-02-03 18:37:40 | state=UfsMpExit |
 2026-02-03 18:37:15 | Port 4 | Stage=UfsMpStartMode | code=0x0 | 102.422 ms
 2026-02-03 18:37:21 | Port 4 | Stage=UfsWrite1024KIspMp | code=0x0 | 5165.979 ms
 2026-02-03 18:37:40 | Port 4 | Stage=UfsMpExit | code=0x0 | 19959.111 ms
+PDT_LOG | func=UfsPowerOff | port=2 | time=2026-02-09 11:16:17 | state=UfsPowerOff | err=0x0
+PDT_LOG | func=UfsPowerOn | port=2 | time=2026-02-09 11:16:18 | state=UfsPowerOn | err=0x0
+PDT_LOG | func=UfsReadPortInfo | port=2 | time=2026-02-09 11:16:18 | state=UfsReadPortInfo | err=0x0
+PDT_LOG | func=UfsCardInit | port=2 | time=2026-02-09 11:16:19 | state=UfsCardInit | err=0x0
+PDT_LOG | func=VccOffForceRom | port=2 | time=2026-02-09 11:16:21 | state=VccOffForceRom | err=0x0
+PDT_LOG | func=UfsMpStartMode | port=2 | time=2026-02-09 11:16:21 | state=UfsMpStartMode | err=0x0
+PDT_LOG | func=UfsWrite1024KIspMp | port=2 | time=2026-02-09 11:16:27 | state=UfsWrite1024KIspMp | err=0x0
+PDT_LOG | func=UfsMpExit | port=2 | time=2026-02-09 11:16:46 | state=UfsMpExit | err=0x0
+2026-02-09 11:16:46 | Port 3 | TotalMs=29563 | Result=0x0
+2026-02-09 11:16:17 | Port 3 | Stage=UfsPowerOff | code=0x0 | 578.193 ms
+2026-02-09 11:16:18 | Port 3 | Stage=UfsPowerOn | code=0x0 | 682.777 ms
+2026-02-09 11:16:18 | Port 3 | Stage=UfsReadPortInfo | code=0x0 | 26.739 ms
+2026-02-09 11:16:19 | Port 3 | Stage=UfsCardInit | code=0x0 | 898.266 ms
+2026-02-09 11:16:21 | Port 3 | Stage=VccOffForceRom | code=0x0 | 1877.245 ms
+2026-02-09 11:16:21 | Port 3 | Stage=UfsMpStartMode | code=0x0 | 105.717 ms
+2026-02-09 11:16:27 | Port 3 | Stage=UfsWrite1024KIspMp | code=0x0 | 5447.142 ms
+2026-02-09 11:16:46 | Port 3 | Stage=UfsMpExit | code=0x0 | 19931.689 ms

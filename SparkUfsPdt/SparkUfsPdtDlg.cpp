@@ -25,7 +25,7 @@ std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
 
 
 CSparkUfsPdtDlg::CSparkUfsPdtDlg(CWnd* pParent /*=nullptr*/)
-	: CDialogEx(IDD_SPARKUFSPDT_DIALOG, pParent)
+	: CDialogBase(IDD_SPARKUFSPDT_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -39,11 +39,13 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_DESTROY()
+	ON_WM_CTLCOLOR()
+	ON_WM_SIZE()
 	ON_BN_CLICKED(IDC_BTN_SCAN_DEVICE, &CSparkUfsPdtDlg::OnBnClickedBtnScanDevice)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_DEVICE, &CSparkUfsPdtDlg::OnNMCustomdrawListDevice)
-    ON_BN_CLICKED(IDC_BTN_START_PDT, &CSparkUfsPdtDlg::OnBnClickedBtnStartPdt)
+	ON_BN_CLICKED(IDC_BTN_START_PDT, &CSparkUfsPdtDlg::OnBnClickedBtnStartPdt)
 	ON_BN_CLICKED(IDC_BTN_PDT_SETTING, &CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting)
-    ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
+	ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
 END_MESSAGE_MAP()
 
 
@@ -62,6 +64,22 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     // Initialize the list view and add rows for each port. A progress
     // control will be overlaid on the "Progress" column.
     CreateListViewColumns();
+
+	if (CWnd* pWnd = GetDlgItem(IDC_S_PDT_NAME))
+	{
+		pWnd->ModifyStyle(SS_LEFT | SS_RIGHT, SS_CENTER | SS_CENTERIMAGE);
+	}
+
+	m_pdtNameBrush.DeleteObject();
+	m_pdtNameBrush.CreateSolidBrush(RGB(255, 255, 255));
+	m_settingPath.Empty();
+	UpdatePdtNameText();
+	InitStatusBar();
+
+    if (CWnd* pStart = GetDlgItem(IDC_BTN_START_PDT))
+    {
+        pStart->EnableWindow(FALSE);
+    }
     return TRUE;  // return TRUE unless you set the focus to a control
 }
 
@@ -198,7 +216,20 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
 
 int CSparkUfsPdtDlg::RunPdtTask(int portIndex)
 {
-    return RunFT3TaskImpl(portIndex, this);
+    bool isQcConfig = false;
+    if (!m_settingPath.IsEmpty())
+    {
+        CString upperPath = m_settingPath;
+        upperPath.MakeUpper();
+        isQcConfig = (upperPath.Find(_T("QC")) >= 0);
+    }
+
+    if (isQcConfig)
+    {
+        return RunQcTaskImpl(portIndex, this);
+    }
+
+    return RunFtTaskImpl(portIndex, this);
 }
 
 // UI thread message handler for progress updates
@@ -243,6 +274,23 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         }
     }
 
+    if (progress >= 100 && port >= 0 && port < UI_THREAD_COUNT)
+    {
+        if (!m_portCompleted[port])
+        {
+            m_portCompleted[port] = true;
+            if (result == 0 || result == ERROR_SUCCESS)
+            {
+                m_passCount++;
+            }
+            else
+            {
+                m_failCount++;
+            }
+            UpdateStatusBarText();
+        }
+    }
+
     delete msg;
     return 0;
 }
@@ -252,6 +300,21 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     // Start PDT tasks for all Ready ports. Create the thread pool if
     // necessary and enqueue a task per Ready row. Errors during enqueue
     // are logged but do not abort other tasks.
+
+    int totalReady = 0;
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pList)
+    {
+        for (int i = 0; i < UI_THREAD_COUNT; ++i)
+        {
+            CString status = pList->GetItemText(i, 2);
+            if (status.CompareNoCase(_T("Ready")) == 0)
+            {
+                totalReady++;
+            }
+        }
+    }
+    ResetTaskCounts(totalReady);
 
     // Initialize static pool if not created. Use 4 threads as default.
     if (!s_pool)
@@ -264,7 +327,6 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
         g_logLockInited = true;
     }
     // enqueue a task per detected Ready device
-    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     if (pList)
     {
         for (int i = 0; i < UI_THREAD_COUNT; ++i)
@@ -304,40 +366,9 @@ void CSparkUfsPdtDlg::OnDestroy()
         DeleteCriticalSection(&g_logLock);
         g_logLockInited = false;
     }
-}
 
-
-
-void CSparkUfsPdtDlg::OnBnClickedBtnPdtIni()
-{
-    // Prompt the user to select an ISP binary file and read it into the
-    // global `g_UfsIsp` buffer. Show a message box indicating success or
-    // failure of the read operation.
-
-    CString strSelectedFilePath;  // stores the selected file path
-    char CurrentDirectory[MAX_PATH];
-    CString strInitPath;
-    int ret = GetCurrentDirectory(MAX_PATH, CurrentDirectory);
-    strInitPath.Format("%s", CurrentDirectory);
-    strInitPath.AppendFormat("\\System");
-    CFileDialog fileDlg(TRUE,
-        _T("bin"),
-        _T(""),
-        OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
-        _T("Binary Files (*.bin)|*.bin|All Files(*.*)|*.*||"));
-    fileDlg.m_ofn.lpstrInitialDir = strInitPath;  // set initial directory for file dialog
-    if (IDOK == fileDlg.DoModal())
-    {
-        strSelectedFilePath = fileDlg.GetPathName();
-    }
-    if (spark::file::fnReadFile(strSelectedFilePath, (PCHAR)g_UfsIsp))
-    {
-        MessageBox(_T("ISP Info Read error!"), _T("Spark UFS Card PDT"), MB_ICONERROR);
-    }
-    else
-    {
-        MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
-    }
+    m_pdtNameBrush.DeleteObject();
+    m_pdtNameFont.DeleteObject();
 }
 
 void CSparkUfsPdtDlg::CreateListViewColumns()
@@ -435,31 +466,172 @@ void CSparkUfsPdtDlg::InitListViewItems()
     }
 }
 
+HBRUSH CSparkUfsPdtDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+	if (pWnd && pWnd->GetDlgCtrlID() == IDC_S_PDT_NAME)
+	{
+		pDC->SetTextColor(RGB(0, 0, 255));
+		pDC->SetBkColor(RGB(255, 255, 255));
+		return (HBRUSH)m_pdtNameBrush.GetSafeHandle();
+	}
+	return hbr;
+}
+
+void CSparkUfsPdtDlg::UpdatePdtNameText()
+{
+	CString label = _T("NONE");
+	if (!m_settingPath.IsEmpty())
+	{
+		CString upperPath = m_settingPath;
+		upperPath.MakeUpper();
+		if (upperPath.Find(_T("FT1")) >= 0)
+			label = _T("FT1");
+		else if (upperPath.Find(_T("FT2")) >= 0)
+			label = _T("FT2");
+		else if (upperPath.Find(_T("FT3")) >= 0)
+			label = _T("FT3");
+		else if (upperPath.Find(_T("QC")) >= 0)
+			label = _T("QC");
+	}
+	SetDlgItemText(IDC_S_PDT_NAME, label);
+
+	if (CWnd* pWnd = GetDlgItem(IDC_S_PDT_NAME))
+	{
+		CRect rc;
+		pWnd->GetClientRect(&rc);
+		int height = rc.Height();
+		if (height > 0)
+		{
+			LOGFONT lf = {};
+			lf.lfHeight = -((height * 3) / 5);
+			lf.lfWeight = FW_BOLD;
+			_tcscpy_s(lf.lfFaceName, LF_FACESIZE, _T("Segoe UI"));
+			m_pdtNameFont.DeleteObject();
+			m_pdtNameFont.CreateFontIndirect(&lf);
+			pWnd->SetFont(&m_pdtNameFont, TRUE);
+		}
+		pWnd->Invalidate();
+	}
+}
+
 void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
 {
     char currentDirectory[MAX_PATH] = {};
-	GetCurrentDirectory(MAX_PATH, currentDirectory);
-	CString initialDir;
-	initialDir.Format(_T("%hs"), currentDirectory);
+    GetCurrentDirectory(MAX_PATH, currentDirectory);
+    CString initialDir;
+    initialDir.Format(_T("%hs"), currentDirectory);
 
-	CFileDialog dlg(TRUE, _T("ini"), _T("setting.ini"), OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
-		_T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
-	dlg.m_ofn.lpstrInitialDir = initialDir;
+    CFileDialog dlg(TRUE, _T("ini"), _T("setting.ini"), OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
+        _T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
+    dlg.m_ofn.lpstrInitialDir = initialDir;
 
-	if (dlg.DoModal() != IDOK)
-	{
-		return;
-	}
+    if (dlg.DoModal() != IDOK)
+    {
+        return;
+    }
 
-	CString path = dlg.GetPathName();
-	PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
-	if (!CDialogSetting::LoadFromIni(path, pOption))
-	{
-		MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
-		return;
-	}
+    CString path = dlg.GetPathName();
+    PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
+    if (!CDialogSetting::LoadFromIni(path, pOption))
+    {
+        MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
+        return;
+    }
+    CString upperPath = path;
+    upperPath.MakeUpper();
+    bool isQc = (upperPath.Find(_T("QC")) >= 0);
 
-	CDialogSetting settingDlg(this);
-	settingDlg.SetUfsOption(pOption);
-	settingDlg.DoModal();
+    CDialogSetting settingDlg(this);
+    settingDlg.SetUfsOption(pOption);
+    settingDlg.SetLastSavePath(path);
+    settingDlg.SetVisiblePages(!isQc, isQc);
+    settingDlg.DoModal();
+
+    m_settingPath = path;
+    UpdatePdtNameText();
+
+    if (CWnd* pStart = GetDlgItem(IDC_BTN_START_PDT))
+    {
+        pStart->EnableWindow(TRUE);
+    }
+
+    if (pOption && pOption->mainPrm.strIspPath[0])
+    {
+        CString configuredPath = CString(pOption->mainPrm.strIspPath);
+        if (!configuredPath.IsEmpty() && GetFileAttributesW((LPCWSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
+        {
+            if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
+            {
+                MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
+            }
+            else
+            {
+                MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+            }
+        }
+    }
+}
+
+void CSparkUfsPdtDlg::InitStatusBar()
+{
+    if (!m_statusBar.GetSafeHwnd())
+    {
+        CRect rc(0, 0, 0, 0);
+        m_statusBar.Create(WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP, rc, this, IDC_STATUS_BAR);
+    }
+    UpdateStatusBarLayout();
+    UpdateStatusBarText();
+}
+
+void CSparkUfsPdtDlg::UpdateStatusBarLayout()
+{
+    if (!m_statusBar.GetSafeHwnd())
+    {
+        return;
+    }
+
+    CRect rcClient;
+    GetClientRect(&rcClient);
+    int height = GetSystemMetrics(SM_CYHSCROLL) + 4;
+    m_statusBar.SetWindowPos(nullptr, rcClient.left, rcClient.bottom - height, rcClient.Width(), height, SWP_NOZORDER);
+
+    int part1 = rcClient.Width() / 3;
+    int part2 = (rcClient.Width() * 2) / 3;
+    int parts[3] = { part1, part2, -1 };
+    m_statusBar.SetParts(3, parts);
+}
+
+void CSparkUfsPdtDlg::UpdateStatusBarText()
+{
+    if (!m_statusBar.GetSafeHwnd())
+    {
+        return;
+    }
+
+    CString text;
+    text.Format(_T("Test Count: %d"), m_totalCount);
+    m_statusBar.SetText(text, 0, 0);
+    text.Format(_T("Pass: %d"), m_passCount);
+    m_statusBar.SetText(text, 1, 0);
+    text.Format(_T("Fail: %d"), m_failCount);
+    m_statusBar.SetText(text, 2, 0);
+}
+
+void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
+{
+    m_totalCount = totalCount;
+    m_passCount = 0;
+    m_failCount = 0;
+    for (int i = 0; i < UI_THREAD_COUNT; ++i)
+    {
+        m_portCompleted[i] = false;
+    }
+    UpdateStatusBarText();
+}
+
+void CSparkUfsPdtDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CDialogEx::OnSize(nType, cx, cy);
+    UpdateStatusBarLayout();
 }

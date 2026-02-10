@@ -97,7 +97,7 @@ static int RunStage(CSparkUfsPdtDlg* pDlg, int portIndex, LPCTSTR stageName, con
 // function executes a series of hardware operations (power, init, ISP
 // write, etc.) and records timing / results for each stage. Progress
 // and final result are reported back to the UI thread via messages.
-int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 {
     auto tStart = std::chrono::steady_clock::now();
     int ret = 0;
@@ -106,7 +106,9 @@ int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     const int MAX_STAGES = 16;
     StageRecord records[MAX_STAGES];
     int recCount = 0;
-
+    PUFS_OPTION pOpt = CDialogBase::GetSharedUfsOption();
+    //0:ERASE_ALL_BLOCK  1:ERASE_GOOD_BLOCK
+    BOOL bFuncOption = pOpt->mainPrm.funcSel;
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     PST_DEVICE_INFO pDeviceInfo = CSparkSm3350Util::GetDeviceInfo((UCHAR)u08PhyIdx);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -123,7 +125,7 @@ int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsCardInit"), [&](){ return sm3350.UfsCardInit(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("VccOffForceRom"), [&](){ return sm3350.VccOffForceRom(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpStartMode"), [&](){ return sm3350.UfsMpStartMode(pData); }, records, MAX_STAGES, recCount, freq);
-        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&](){ return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), UFS_ERASE_ALL_BLOCK); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&](){ return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpExit"), [&](){ return sm3350.UfsMpExit(pData); }, records, MAX_STAGES, recCount, freq);
     }
 
@@ -149,7 +151,7 @@ int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     return ret;
 }
 
-int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 {
     auto tStart = std::chrono::steady_clock::now();
     int ret = 0;
@@ -158,7 +160,9 @@ int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     const int MAX_STAGES = 16;
     StageRecord records[MAX_STAGES];
     int recCount = 0;
-
+    PUFS_OPTION pOpt = CDialogBase::GetSharedUfsOption();
+    //0:ERASE_ALL_BLOCK  1:ERASE_GOOD_BLOCK
+    BOOL bFuncOption = pOpt->mainPrm.funcSel;
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     PST_DEVICE_INFO pDeviceInfo = CSparkSm3350Util::GetDeviceInfo((UCHAR)u08PhyIdx);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -175,7 +179,7 @@ int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsCardInit"), [&]() { return sm3350.UfsCardInit(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("VccOffForceRom"), [&]() { return sm3350.VccOffForceRom(pData); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpStartMode"), [&]() { return sm3350.UfsMpStartMode(pData); }, records, MAX_STAGES, recCount, freq);
-        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&]() { return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), UFS_ERASE_GOOD_BLOCK); }, records, MAX_STAGES, recCount, freq);
+        if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsWrite1024KIspMp"), [&]() { return sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption); }, records, MAX_STAGES, recCount, freq);
         if (ret == ERROR_SUCCESS) ret = RunStage(pDlg, portIndex, _T("UfsMpExit"), [&]() { return sm3350.UfsMpExit(pData); }, records, MAX_STAGES, recCount, freq);
     }
 

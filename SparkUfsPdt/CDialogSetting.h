@@ -16,6 +16,8 @@ public:
 	CDialogSetting(CWnd* pParent = nullptr);   // 标准构造函数
 	virtual ~CDialogSetting();
 	static BOOL LoadFromIni(const CString& path, PUFS_OPTION pOption);
+	void SetLastSavePath(const CString& path); // set path for Save
+	void SetVisiblePages(bool showMain, bool showQc);
 
 // 对话框数据
 #ifdef AFX_DESIGN_TIME
@@ -44,4 +46,8 @@ private:
 	CDialogQcSetting m_qcSetting;
 	int m_currentPage = 0;
 	CString m_lastSavePath;
+	bool m_showMain = true;
+	bool m_showQc = true;
+	int m_tabPages[2] = { 0, 1 };
+	int m_tabPageCount = 0;
 };

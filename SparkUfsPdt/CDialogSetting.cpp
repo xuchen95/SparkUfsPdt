@@ -23,6 +23,12 @@ CDialogSetting::~CDialogSetting()
 {
 }
 
+void CDialogSetting::SetVisiblePages(bool showMain, bool showQc)
+{
+	m_showMain = showMain;
+	m_showQc = showQc;
+}
+
 BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 {
 	if (!pOption)
@@ -79,6 +85,9 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	readString("Main", "mnm", buffer, sizeof(buffer));
 	if (buffer[0])
 		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm) / sizeof(WCHAR));
+	readString("Main", "szFlowName", buffer, sizeof(buffer));
+	if (buffer[0])
+		strcpy_s(pOption->mainPrm.szFlowName, sizeof(pOption->mainPrm.szFlowName), buffer);
 
 	pOption->qcPrm.bCheckDiskInfo = readInt("QC", "bCheckDiskInfo", pOption->qcPrm.bCheckDiskInfo);
 	pOption->qcPrm.sectorCnt = static_cast<ULONG>(readInt("QC", "sectorCnt", static_cast<int>(pOption->qcPrm.sectorCnt)));
@@ -130,8 +139,17 @@ BOOL CDialogSetting::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	m_tabParamPage.InsertItem(0, _T("Main Setting"));
-	m_tabParamPage.InsertItem(1, _T("QC Setting"));
+	m_tabPageCount = 0;
+	if (m_showMain)
+	{
+		m_tabParamPage.InsertItem(m_tabPageCount, _T("Main Setting"));
+		m_tabPages[m_tabPageCount++] = 0;
+	}
+	if (m_showQc)
+	{
+		m_tabParamPage.InsertItem(m_tabPageCount, _T("QC Setting"));
+		m_tabPages[m_tabPageCount++] = 1;
+	}
 
 	m_mainSetting.SetUfsOption(GetUfsOption());
 	m_qcSetting.SetUfsOption(GetUfsOption());
@@ -148,19 +166,27 @@ BOOL CDialogSetting::OnInitDialog()
 	m_tabParamPage.GetClientRect(&tabRect);
 	m_tabParamPage.AdjustRect(FALSE, &tabRect);
 
-	m_mainSetting.SetWindowPos(nullptr, tabRect.left, tabRect.top, tabRect.Width(), tabRect.Height(), SWP_NOZORDER | SWP_SHOWWINDOW);
+	m_mainSetting.SetWindowPos(nullptr, tabRect.left, tabRect.top, tabRect.Width(), tabRect.Height(), SWP_NOZORDER | SWP_HIDEWINDOW);
 	m_qcSetting.SetWindowPos(nullptr, tabRect.left, tabRect.top, tabRect.Width(), tabRect.Height(), SWP_NOZORDER | SWP_HIDEWINDOW);
 
-	m_currentPage = 0;
+	if (m_tabPageCount > 0)
+	{
+		m_tabParamPage.SetCurSel(0);
+		ShowPage(0);
+	}
 
 	return TRUE;
 }
 
 void CDialogSetting::ShowPage(int index)
 {
-	m_mainSetting.ShowWindow(index == 0 ? SW_SHOW : SW_HIDE);
-	m_qcSetting.ShowWindow(index == 1 ? SW_SHOW : SW_HIDE);
-	m_currentPage = index;
+	if (index < 0 || index >= m_tabPageCount)
+		return;
+
+	int pageId = m_tabPages[index];
+	m_mainSetting.ShowWindow(pageId == 0 ? SW_SHOW : SW_HIDE);
+	m_qcSetting.ShowWindow(pageId == 1 ? SW_SHOW : SW_HIDE);
+	m_currentPage = pageId;
 }
 
 void CDialogSetting::SaveToOption(bool saveMain, bool saveQc)
@@ -217,6 +243,7 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
 		if (!writeValue(_T("Main"), _T("mdt"), CString(pOption->mainPrm.mdt))) return FALSE;
 		if (!writeValue(_T("Main"), _T("prv"), CString(pOption->mainPrm.prv))) return FALSE;
 		if (!writeValue(_T("Main"), _T("mnm"), CString(pOption->mainPrm.mnm))) return FALSE;
+		if (!writeValue(_T("Main"), _T("szFlowName"), CString(pOption->mainPrm.szFlowName))) return FALSE;
 	}
 
 	if (saveQc)
@@ -280,6 +307,11 @@ void CDialogSetting::OnBnClickedBtnSettingSaveAs()
 			MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 		}
 	}
+}
+
+void CDialogSetting::SetLastSavePath(const CString& path)
+{
+	m_lastSavePath = path;
 }
 
 void CDialogSetting::OnBnClickedBtnSettingSave()

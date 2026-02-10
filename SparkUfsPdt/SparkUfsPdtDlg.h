@@ -5,11 +5,11 @@
 #include <afxcmn.h> // include this header to use `CProgressCtrl`
 #include <memory>
 #include "libsparkusb.h"
-
+#include "CDialogBase.h"
 static char g_UfsIsp[UFS_ISP_SIZE];
 
 // CSparkUfsPdtDlg dialog
-class CSparkUfsPdtDlg : public CDialogEx
+class CSparkUfsPdtDlg : public CDialogBase
 {
 // Construction
 public:
@@ -37,6 +37,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnDestroy();
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	DECLARE_MESSAGE_MAP()
 public:
 	afx_msg void OnBnClickedBtnScanDevice();
@@ -46,11 +47,13 @@ public:
 protected:
     // Progress control ID base (choose an ID range not used by other controls)
     static constexpr int IDC_S_UI_THREAD_BASE = 2000;
+    static constexpr int IDC_STATUS_BAR = 3000;
 
     // Fix: declare progress control array
     CProgressCtrl m_progress[UI_THREAD_COUNT];
 public:
     afx_msg void OnBnClickedBtnStartPdt();
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 
     // Run PDT for a specific port index (0-based) and report progress to UI
     int RunPdtTask(int portIndex);
@@ -80,13 +83,49 @@ public:
     // Implementation entry point moved to a separate compilation unit. The
     // wrapper methods in the dialog call this function which receives the
     // port index and a pointer to the dialog instance for UI notifications.
-    friend int RunFT1TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
-    friend int RunFT3TaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
-	//CHAR m_szIspBuff[1024*512*2];
-	afx_msg void OnBnClickedBtnPdtIni();
+    friend int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
+    friend int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
+
     void CreateListViewColumns();
     void InitListViewItems();
+    void UpdatePdtNameText();
+    void InitStatusBar();
+    void UpdateStatusBarLayout();
+    void UpdateStatusBarText();
+    void ResetTaskCounts(int totalCount);
+
+private:
+    CBrush m_pdtNameBrush;
+    CString m_settingPath;
+    CFont m_pdtNameFont;
+    CStatusBarCtrl m_statusBar;
+    int m_totalCount = 0;
+    int m_passCount = 0;
+    int m_failCount = 0;
+    bool m_portCompleted[UI_THREAD_COUNT] = {};
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

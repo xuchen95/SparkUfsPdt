@@ -3,8 +3,8 @@
 
 typedef struct main_param
 {
+	char szFlowName[32];
 	int funcSel;
-
 	BOOL bDLTesterFW;
 	char strTesterFwPath[1024];
 	BOOL bDLISP;
