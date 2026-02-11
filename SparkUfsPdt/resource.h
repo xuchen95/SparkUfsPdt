@@ -7,6 +7,8 @@
 #define IDD_DLG_MAIN_SETTING            129
 #define IDD_DLG_QC_SETTING              132
 #define IDD_DLG_SETTING                 134
+#define IDD_DIALOG1                     136
+#define IDD_DIALOG_BASE_SET             136
 #define IDC_BTN_PDT_SETTING             1000
 #define IDC_BTN_SCAN_DEVICE             1001
 #define IDC_BTN_START_PDT               1002
@@ -56,14 +58,27 @@
 #define IDC_TAB_PARAM_PAGE              1038
 #define IDC_EDIT_QC_SECTOR_CNT          1039
 #define IDC_S_PDT_NAME                  1041
+#define IDC_RADIO_SET_BASE0             1042
+#define IDC_RADIO_SET_BASE1             1043
+#define IDC_RADIO_SET_HWID              1044
+#define IDC_RADIO_SET_DISK_LETTER       1045
+#define IDC_RADIO_SET_FORCE_ROM_UPIU    1046
+#define IDC_RADIO_SET_FORCE_ROM_VCCOFF  1047
+#define IDC_CHECK_SET_REMOTE_SN         1048
+#define IDC_EDIT_SET_REMOTE_SN          1049
+#define IDC_BTN_SET_REMOTE_SN_SEL       1050
+#define IDC_EDIT_SET_REPORT             1051
+#define IDC_BTN_SET_REPORT_SEL          1053
+#define IDR_MAINMENU                    200
+#define ID_SETTING_CONFIG               32771
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        136
-#define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1042
+#define _APS_NEXT_RESOURCE_VALUE        201
+#define _APS_NEXT_COMMAND_VALUE         32772
+#define _APS_NEXT_CONTROL_VALUE         1052
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

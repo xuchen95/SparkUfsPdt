@@ -54,6 +54,7 @@ protected:
 public:
     afx_msg void OnBnClickedBtnStartPdt();
     afx_msg void OnSize(UINT nType, int cx, int cy);
+    afx_msg void OnSettingConfig();
 
     // Run PDT for a specific port index (0-based) and report progress to UI
     int RunPdtTask(int portIndex);
@@ -99,11 +100,82 @@ private:
     CString m_settingPath;
     CFont m_pdtNameFont;
     CStatusBarCtrl m_statusBar;
+    CMenu m_mainMenu;
     int m_totalCount = 0;
     int m_passCount = 0;
     int m_failCount = 0;
     bool m_portCompleted[UI_THREAD_COUNT] = {};
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

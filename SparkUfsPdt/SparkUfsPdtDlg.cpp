@@ -8,6 +8,7 @@
 #include "afxdialogex.h"
 #include "libsparkusb.h"
 #include "CDialogSetting.h"
+#include "CDialogBaseSet.h"
 #include "ThreadPool.h"
 
 #ifdef _DEBUG
@@ -15,6 +16,83 @@
 #endif
 //maybe have to change include path
 using namespace spark::sm3350;
+
+static bool ReadTextFileA(const CString& path, CStringA& content)
+{
+    CFile file;
+    if (!file.Open(path, CFile::modeRead | CFile::typeBinary))
+    {
+        return false;
+    }
+    ULONGLONG length = file.GetLength();
+    CStringA data;
+    UINT toRead = static_cast<UINT>(length);
+    char* buffer = data.GetBuffer(toRead);
+    UINT read = file.Read(buffer, toRead);
+    data.ReleaseBuffer(read);
+    content = data;
+    return true;
+}
+
+static CString GetGitVersionString()
+{
+    TCHAR modulePath[MAX_PATH] = {};
+    GetModuleFileName(nullptr, modulePath, MAX_PATH);
+    CString dir = modulePath;
+    int pos = dir.ReverseFind(_T('\\'));
+    if (pos >= 0)
+    {
+        dir = dir.Left(pos);
+    }
+
+    CStringA headContent;
+    CString gitHash;
+    CString searchDir = dir;
+    for (int i = 0; i < 6 && !searchDir.IsEmpty(); ++i)
+    {
+        CString headPath = searchDir + _T("\\.git\\HEAD");
+        if (GetFileAttributes(headPath) != INVALID_FILE_ATTRIBUTES && ReadTextFileA(headPath, headContent))
+        {
+            headContent.Trim();
+            if (headContent.Left(4) == "ref:")
+            {
+                CStringA refPathA = headContent.Mid(4);
+                refPathA.Trim();
+                CString refPath = searchDir + _T("\\.git\\") + CString(refPathA);
+                CStringA refContent;
+                if (ReadTextFileA(refPath, refContent))
+                {
+                    refContent.Trim();
+                    gitHash = CString(refContent);
+                }
+            }
+            else
+            {
+                gitHash = CString(headContent);
+            }
+            break;
+        }
+
+        int lastSlash = searchDir.ReverseFind(_T('\\'));
+        if (lastSlash < 0)
+        {
+            break;
+        }
+        searchDir = searchDir.Left(lastSlash);
+    }
+
+    if (gitHash.IsEmpty())
+    {
+        return _T("unknown");
+    }
+
+    if (gitHash.GetLength() > 8)
+    {
+        gitHash = gitHash.Left(8);
+    }
+    return gitHash;
+}
+
 
 // define static pool pointer
 std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
@@ -45,6 +123,7 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_DEVICE, &CSparkUfsPdtDlg::OnNMCustomdrawListDevice)
 	ON_BN_CLICKED(IDC_BTN_START_PDT, &CSparkUfsPdtDlg::OnBnClickedBtnStartPdt)
 	ON_BN_CLICKED(IDC_BTN_PDT_SETTING, &CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting)
+	ON_COMMAND(ID_SETTING_CONFIG, &CSparkUfsPdtDlg::OnSettingConfig)
 	ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
 END_MESSAGE_MAP()
 
@@ -59,6 +138,21 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     // dialog, the framework performs this automatically.
 	SetIcon(m_hIcon, TRUE);			// 设置大图标
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
+
+    CString title;
+    title.Format(_T("Metorage UFS TOOL VER %s"), GetGitVersionString().GetString());
+    SetWindowText(title);
+
+    TCHAR currentDirectory[MAX_PATH] = {};
+    GetCurrentDirectory(MAX_PATH, currentDirectory);
+    CString baseIniPath;
+    baseIniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
+    CDialogBase::LoadBaseSettingFromIni(baseIniPath);
+
+    if (m_mainMenu.LoadMenu(IDR_MAINMENU))
+    {
+        SetMenu(&m_mainMenu);
+    }
 
     // TODO: add extra initialization here if needed
     // Initialize the list view and add rows for each port. A progress
@@ -634,4 +728,10 @@ void CSparkUfsPdtDlg::OnSize(UINT nType, int cx, int cy)
 {
     CDialogEx::OnSize(nType, cx, cy);
     UpdateStatusBarLayout();
+}
+
+void CSparkUfsPdtDlg::OnSettingConfig()
+{
+    CDialogBaseSet dlg(this);
+    dlg.DoModal();
 }

@@ -355,6 +355,7 @@
   <ItemGroup>
     <ClInclude Include="CardDef.h" />
     <ClInclude Include="CDialogBase.h" />
+    <ClInclude Include="CDialogBaseSet.h" />
     <ClInclude Include="CDialogMainSetting.h" />
     <ClInclude Include="CDialogQcSetting.h" />
     <ClInclude Include="CDialogSetting.h" />
@@ -367,6 +368,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CDialogBase.cpp" />
+    <ClCompile Include="CDialogBaseSet.cpp" />
     <ClCompile Include="CDialogMainSetting.cpp" />
     <ClCompile Include="CDialogQcSetting.cpp" />
     <ClCompile Include="CDialogSetting.cpp" />

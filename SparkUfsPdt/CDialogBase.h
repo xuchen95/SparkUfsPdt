@@ -52,15 +52,30 @@ typedef struct ufs_option
 	QC_PARAM qcPrm;
 }UFS_OPTION, * PUFS_OPTION;
 
+typedef struct UFS_BASE_SETTING
+{
+	int PortBaseSel;
+	int PortMappingSel;
+	int ForceRomMode;
+	BOOL bSnSeparateIni;
+	CHAR szRemoteSnPath[1024];
+	CHAR szReportPath[1024];
+}ST_UFS_BASE_SETTING, * PST_UFS_BASE_SETTING;
 
 class CDialogBase :public CDialogEx
 {
 public:
+	DECLARE_DYNAMIC(CDialogBase)
 	explicit CDialogBase(UINT nIDTemplate, CWnd* pParent = nullptr);
 
 	static PUFS_OPTION GetSharedUfsOption();
 	void SetUfsOption(PUFS_OPTION pOption);
 	PUFS_OPTION GetUfsOption() const;
+
+	static PST_UFS_BASE_SETTING GetSharedBaseSetting();
+	void SetBaseSetting(PST_UFS_BASE_SETTING pOption);
+	PST_UFS_BASE_SETTING GetBaseSetting() const;
+	static void LoadBaseSettingFromIni(const CString& path);
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
@@ -68,5 +83,7 @@ protected:
 private:
 	static UFS_OPTION s_sharedOption;
 	PUFS_OPTION m_pUfsOption = nullptr;
+	static ST_UFS_BASE_SETTING s_baseOption;
+	PST_UFS_BASE_SETTING m_pBaseOption = nullptr;
 };
 

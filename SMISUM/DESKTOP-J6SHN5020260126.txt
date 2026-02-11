@@ -1,0 +1,273 @@
+
+==================================================
+Begin Test Time : 2026/01/26 10:49:09
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 10:51:26 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 10:51:58
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 3350_163182
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 10:55:22 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 10:57:57
+Begin Serial : 0x0
+End Serial : 0x
+
+Test Total = 1
+Test Pass = 0
+Test Fail = 1
+Error Code = 0x8b.Unknown Error            :Total = 1
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 11:01:06 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 11:01:22
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 11:01:42 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 11:01:48
+Begin Serial : 0xHN5000000001
+End Serial : 0x
+
+Test Total = 1
+Test Pass = 1
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 11:03:00 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 11:12:22
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 11:13:24 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 11:15:06
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 11:19:12 
+==================================================
+
+==================================================
+Begin Test Time : 2026/01/26 16:16:25
+Begin Serial : 0x
+End Serial : 0x
+
+Test Total = 0
+Test Pass = 0
+Test Fail = 0
+
+ISP Version : 
+MP Tool Version : 0.19.60.92
+
+PC Name : DESKTOP-J6SHN50
+
+Tester Version [0] : 
+Tester Version [1] : 
+Tester Version [2] : 
+Tester Version [3] : 
+Tester Version [4] : 
+Tester Version [5] : 
+Tester Version [6] : 
+Tester Version [7] : 
+Tester Version [8] : 
+Tester Version [9] : 
+Tester Version [10] : 3350_196083
+Tester Version [11] : 
+Tester Version [12] : 
+Tester Version [13] : 
+Tester Version [14] : 
+Tester Version [15] : 
+
+End Test Time   : 2026/01/26 16:25:55 
+==================================================

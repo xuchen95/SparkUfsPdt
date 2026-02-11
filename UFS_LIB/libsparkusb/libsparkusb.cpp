@@ -617,3 +617,21 @@ int spark::sm3350::CSparkSm3350Util::UfsWritePortInfo(PCHAR pData)
     return ERROR_SUCCESS;
 }
 
+int spark::sm3350::CSparkSm3350Util::UfsSetSrialNumberString(PCHAR pData)
+{
+    
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadBufferUpiu(pData))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsSetManuDate(PCHAR pData)
+{
+    return 0;
+}
+
