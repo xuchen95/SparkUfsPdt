@@ -177,6 +177,18 @@ namespace spark
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
             int UfsSetManuDate(PCHAR pData = nullptr);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsCheckIsp(PCHAR pData = nullptr);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsCheckSram(PCHAR pData = nullptr);
 
         public:
             PCHAR m_szDevicePath = nullptr;

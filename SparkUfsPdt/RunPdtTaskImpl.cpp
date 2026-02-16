@@ -103,6 +103,7 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     int ret = 0;
     CHAR pData[512];
     CHAR pPortInfo[1024];
+    CHAR pMdtInfo[512*8];
     const int MAX_STAGES = 16;
     StageRecord records[MAX_STAGES];
     int recCount = 0;

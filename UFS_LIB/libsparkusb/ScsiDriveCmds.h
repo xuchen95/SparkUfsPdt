@@ -62,6 +62,16 @@ typedef union
         UCHAR rsv4;         //Byte A
         UCHAR uLen;          //Byte B
     }ref_clock;
+
+    struct
+    {
+        USHORT u16OpCode;       //Byte 0-1
+        USHORT rsv1;       //Byte 2-3
+        UCHAR flag;              //Byte 4
+        UINT32 rsv2;              //Byte 5-8
+        USHORT rsv3;          //Byte 9-A
+        UCHAR uLen;          //Byte B
+    }vcmd;
     UCHAR ub[16];
 } U_CDB, *PU_CDB;
 #pragma pack()

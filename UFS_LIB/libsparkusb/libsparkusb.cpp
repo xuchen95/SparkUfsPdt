@@ -624,7 +624,9 @@ int spark::sm3350::CSparkSm3350Util::UfsSetSrialNumberString(PCHAR pData)
     int ret;
     do
     {
-        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadBufferUpiu(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdWrite(pData,FLAG_WRITE_PSN))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;
@@ -632,6 +634,44 @@ int spark::sm3350::CSparkSm3350Util::UfsSetSrialNumberString(PCHAR pData)
 
 int spark::sm3350::CSparkSm3350Util::UfsSetManuDate(PCHAR pData)
 {
-    return 0;
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdWrite(pData, FLAG_WRITE_MDT))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsCheckIsp(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_ISP))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsCheckSram(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_SRAM1))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_SRAM2))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
 }
 

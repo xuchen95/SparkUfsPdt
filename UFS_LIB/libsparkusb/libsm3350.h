@@ -39,8 +39,17 @@
 #define CMD_WRITE_PORT_ID 0xF0E0
 #define CMD_READ_PORT_ID 0xF0E1
 
+#define CMD_VCMD_WRITE 0xD1E6
+#define CMD_VCMD_READ 0xD1E7
+
 #define SECTOR2BYTE(x)              ((x) << 9)
 #define BYTE2SECTOR(x)              ((x + 511) >> 9)
+
+#define FLAG_WRITE_MDT (0xEC)
+#define FLAG_WRITE_PSN (0xEE)
+#define FLAG_CHECK_ISP (0xA4)
+#define FLAG_CHECK_SRAM1 (0xA6)
+#define FLAG_CHECK_SRAM2 (0xA7)
 
 class CSm3350Vcmds
 {
@@ -90,6 +99,11 @@ public:
 
     int UfsReadPortInfo(PCHAR pData);
     int UfsWritePortInfo(PCHAR pData);
+
+    int UfsVcmdStart(PCHAR pData);
+    int UfsVcmdEnd(PCHAR pData);
+    int UfsVcmdWrite(PCHAR pData, UCHAR flag);
+    int UfsVcmdRead(PCHAR pData, UCHAR flag);
 
 protected:
     int ScsiCmdDataIn(PCHAR dataBuffer);
