@@ -364,6 +364,7 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SparkUfsPdt.h" />
     <ClInclude Include="SparkUfsPdtDlg.h" />
+    <ClInclude Include="StateImp.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
@@ -385,6 +386,7 @@
     <ClCompile Include="RunPdtTaskImpl.cpp" />
     <ClCompile Include="SparkUfsPdt.cpp" />
     <ClCompile Include="SparkUfsPdtDlg.cpp" />
+    <ClCompile Include="StateImp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SparkUfsPdt.rc" />

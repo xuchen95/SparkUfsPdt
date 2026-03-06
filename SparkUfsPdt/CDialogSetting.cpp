@@ -64,27 +64,63 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	readString("Main", "mid", buffer, sizeof(buffer));
 	if (buffer[0])
 		pOption->mainPrm.mid[0] = buffer[0];
+	
 	readString("Main", "oid", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.oid, sizeof(pOption->mainPrm.oid) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.oid, sizeof(pOption->mainPrm.oid) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.oid[0] = L'\0';
+	}
+	
 	readString("Main", "pnm", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.pnm[0] = L'\0';
+	}
+	
 	readString("Main", "psn_start", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_start, sizeof(pOption->mainPrm.psn_start) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_start, sizeof(pOption->mainPrm.psn_start) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.psn_start[0] = L'\0';
+	}
+	
 	readString("Main", "psn_end", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_end, sizeof(pOption->mainPrm.psn_end) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_end, sizeof(pOption->mainPrm.psn_end) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.psn_end[0] = L'\0';
+	}
+	
 	readString("Main", "mdt", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.mdt[0] = L'\0';
+	}
+	
 	readString("Main", "prv", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.prv[0] = L'\0';
+	}
+	
 	readString("Main", "mnm", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->mainPrm.mnm[0] = L'\0';
+	}
+	
 	readString("Main", "szFlowName", buffer, sizeof(buffer));
 	if (buffer[0])
 		strcpy_s(pOption->mainPrm.szFlowName, sizeof(pOption->mainPrm.szFlowName), buffer);
@@ -94,7 +130,12 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	pOption->qcPrm.bCheckPnm = readInt("QC", "bCheckPnm", pOption->qcPrm.bCheckPnm);
 	readString("QC", "pnm", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.pnm, sizeof(pOption->qcPrm.pnm) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.pnm, sizeof(pOption->qcPrm.pnm) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->qcPrm.pnm[0] = L'\0';
+	}
+	
 	pOption->qcPrm.bCheckMidOid = readInt("QC", "bCheckMidOid", pOption->qcPrm.bCheckMidOid);
 	readString("QC", "bankIdx", buffer, sizeof(buffer));
 	if (buffer[0])
@@ -102,21 +143,42 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	readString("QC", "mid", buffer, sizeof(buffer));
 	if (buffer[0])
 		pOption->qcPrm.mid[0] = buffer[0];
+	
 	readString("QC", "oid", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->qcPrm.oid[0] = L'\0';
+	}
+	
 	pOption->qcPrm.bCheckMnm = readInt("QC", "bCheckMnm", pOption->qcPrm.bCheckMnm);
 	readString("QC", "mnm", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->qcPrm.mnm[0] = L'\0';
+	}
+	
 	pOption->qcPrm.bCheckPrv = readInt("QC", "bCheckPrv", pOption->qcPrm.bCheckPrv);
 	readString("QC", "prv", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->qcPrm.prv[0] = L'\0';
+	}
+	
 	pOption->qcPrm.bCheckMdt = readInt("QC", "bCheckMdt", pOption->qcPrm.bCheckMdt);
 	readString("QC", "mdt", buffer, sizeof(buffer));
 	if (buffer[0])
-		MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt) / sizeof(WCHAR));
+	{
+		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt) / sizeof(WCHAR));
+		if (result == 0)
+			pOption->qcPrm.mdt[0] = L'\0';
+	}
+	
 	pOption->qcPrm.bCheckIsp = readInt("QC", "bCheckIsp", pOption->qcPrm.bCheckIsp);
 	readString("QC", "isp", buffer, sizeof(buffer));
 	if (buffer[0])
@@ -137,7 +199,10 @@ void CDialogSetting::DoDataExchange(CDataExchange* pDX)
 
 BOOL CDialogSetting::OnInitDialog()
 {
-	CDialogEx::OnInitDialog();
+	if (!CDialogEx::OnInitDialog())
+	{
+		return FALSE;
+	}
 
 	m_tabPageCount = 0;
 	if (m_showMain)
@@ -154,8 +219,16 @@ BOOL CDialogSetting::OnInitDialog()
 	m_mainSetting.SetUfsOption(GetUfsOption());
 	m_qcSetting.SetUfsOption(GetUfsOption());
 
-	m_mainSetting.Create(IDD_DLG_MAIN_SETTING, &m_tabParamPage);
-	m_qcSetting.Create(IDD_DLG_QC_SETTING, &m_tabParamPage);
+	if (!m_mainSetting.Create(IDD_DLG_MAIN_SETTING, &m_tabParamPage))
+	{
+		MessageBox(_T("Failed to create Main Setting dialog."), _T("Error"), MB_OK | MB_ICONERROR);
+		return FALSE;
+	}
+	if (!m_qcSetting.Create(IDD_DLG_QC_SETTING, &m_tabParamPage))
+	{
+		MessageBox(_T("Failed to create QC Setting dialog."), _T("Error"), MB_OK | MB_ICONERROR);
+		return FALSE;
+	}
 
 	m_mainSetting.ModifyStyle(WS_POPUP, WS_CHILD);
 	m_qcSetting.ModifyStyle(WS_POPUP, WS_CHILD);
@@ -203,18 +276,32 @@ void CDialogSetting::SaveToOption(bool saveMain, bool saveQc)
 
 BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
 {
+	if (path.IsEmpty())
+	{
+		MessageBox(_T("Invalid file path."), _T("Error"), MB_ICONERROR);
+		return FALSE;
+	}
+
 	SaveToOption(saveMain, saveQc);
 
 	PUFS_OPTION pOption = GetUfsOption();
 	if (!pOption)
 	{
-		MessageBox(_T("Save failed."), _T("Setting"), MB_ICONERROR);
+		MessageBox(_T("Save failed: invalid option pointer."), _T("Setting"), MB_ICONERROR);
 		return FALSE;
 	}
 
 	auto writeValue = [&](LPCTSTR section, LPCTSTR key, const CString& value)
 	{
-		return WritePrivateProfileString(section, key, value, path) != FALSE;
+		if (!WritePrivateProfileString(section, key, value, path))
+		{
+			DWORD error = GetLastError();
+			CString errorMsg;
+			errorMsg.Format(_T("Failed to write %s\\%s (Error: %lu)"), section, key, error);
+			MessageBox(errorMsg, _T("Write Error"), MB_OK | MB_ICONWARNING);
+			return FALSE;
+		}
+		return TRUE;
 	};
 
 	CString value;
@@ -230,8 +317,6 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
 		if (!writeValue(_T("Main"), _T("strIspPath"), CString(pOption->mainPrm.strIspPath))) return FALSE;
 		value.Format(_T("%d"), pOption->mainPrm.bDLCID);
 		if (!writeValue(_T("Main"), _T("bDLCID"), value)) return FALSE;
-		value.Format(_T("%d"), pOption->mainPrm.funcSel);
-		if (!writeValue(_T("Main"), _T("funcSel"), value)) return FALSE;
 		value.Format(_T("%c"), pOption->mainPrm.bankIdx[0]);
 		if (!writeValue(_T("Main"), _T("bankIdx"), value)) return FALSE;
 		value.Format(_T("%c"), pOption->mainPrm.mid[0]);
@@ -300,9 +385,7 @@ void CDialogSetting::OnBnClickedBtnSettingSaveAs()
 	if (dlg.DoModal() == IDOK)
 	{
 		m_lastSavePath = dlg.GetPathName();
-		bool saveMain = (m_currentPage == 0);
-		bool saveQc = (m_currentPage == 1);
-		if (SaveToFile(m_lastSavePath, saveMain, saveQc))
+		if (SaveToFile(m_lastSavePath, true, true))
 		{
 			MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 		}
@@ -322,9 +405,7 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 		return;
 	}
 
-	bool saveMain = (m_currentPage == 0);
-	bool saveQc = (m_currentPage == 1);
-	if (SaveToFile(m_lastSavePath, saveMain, saveQc))
+	if (SaveToFile(m_lastSavePath, true, true))
 	{
 		MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 	}

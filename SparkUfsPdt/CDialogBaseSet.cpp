@@ -26,7 +26,10 @@ void CDialogBaseSet::DoDataExchange(CDataExchange* pDX)
 
 BOOL CDialogBaseSet::OnInitDialog()
 {
-    CDialogBase::OnInitDialog();
+    if (!CDialogBase::OnInitDialog())
+    {
+        return FALSE;
+    }
 
     PST_UFS_BASE_SETTING pBase = GetBaseSetting();
     if (pBase)
@@ -35,6 +38,7 @@ BOOL CDialogBaseSet::OnInitDialog()
         m_portMappingSel = (pBase->PortMappingSel != 0) ? 1 : 0;
         m_forceRomMode = (pBase->ForceRomMode != 0) ? 1 : 0;
         m_snSeparateIni = pBase->bSnSeparateIni;
+        
         m_remoteSnPath = CString(pBase->szRemoteSnPath);
         m_reportPath = CString(pBase->szReportPath);
     }
@@ -51,38 +55,52 @@ void CDialogBaseSet::OnOK()
     }
 
     PST_UFS_BASE_SETTING pBase = GetBaseSetting();
-    if (pBase)
+    if (!pBase)
     {
-        pBase->PortBaseSel = m_portBaseSel;
-        pBase->PortMappingSel = m_portMappingSel;
-        pBase->ForceRomMode = m_forceRomMode;
-        pBase->bSnSeparateIni = m_snSeparateIni;
-
-        CStringA remoteA = CT2A(m_remoteSnPath);
-        strcpy_s(pBase->szRemoteSnPath, sizeof(pBase->szRemoteSnPath), remoteA);
-
-        CStringA reportA = CT2A(m_reportPath);
-        strcpy_s(pBase->szReportPath, sizeof(pBase->szReportPath), reportA);
-
-        TCHAR currentDirectory[MAX_PATH] = {};
-        GetCurrentDirectory(MAX_PATH, currentDirectory);
-        CString iniPath;
-        iniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
-
-        CString value;
-        value.Format(_T("%d"), pBase->PortBaseSel);
-        WritePrivateProfileString(_T("Base"), _T("PortBaseSel"), value, iniPath);
-        value.Format(_T("%d"), pBase->PortMappingSel);
-        WritePrivateProfileString(_T("Base"), _T("PortMappingSel"), value, iniPath);
-        value.Format(_T("%d"), pBase->ForceRomMode);
-        WritePrivateProfileString(_T("Base"), _T("ForceRomMode"), value, iniPath);
-        value.Format(_T("%d"), pBase->bSnSeparateIni ? 1 : 0);
-        WritePrivateProfileString(_T("Base"), _T("SnSeparateIni"), value, iniPath);
-        WritePrivateProfileString(_T("Base"), _T("RemoteSnPath"), m_remoteSnPath, iniPath);
-        WritePrivateProfileString(_T("Base"), _T("ReportPath"), m_reportPath, iniPath);
+        MessageBox(_T("Failed to get base setting."), _T("Error"), MB_OK | MB_ICONERROR);
+        return;
     }
 
+    pBase->PortBaseSel = m_portBaseSel;
+    pBase->PortMappingSel = m_portMappingSel;
+    pBase->ForceRomMode = m_forceRomMode;
+    pBase->bSnSeparateIni = m_snSeparateIni;
+
+    CStringA remoteA = CT2A(m_remoteSnPath);
+    if (remoteA.GetLength() > sizeof(pBase->szRemoteSnPath) - 1)
+    {
+        MessageBox(_T("Remote SN path is too long."), _T("Error"), MB_OK | MB_ICONERROR);
+        return;
+    }
+    strcpy_s(pBase->szRemoteSnPath, sizeof(pBase->szRemoteSnPath), remoteA);
+
+    CStringA reportA = CT2A(m_reportPath);
+    if (reportA.GetLength() > sizeof(pBase->szReportPath) - 1)
+    {
+        MessageBox(_T("Report path is too long."), _T("Error"), MB_OK | MB_ICONERROR);
+        return;
+    }
+    strcpy_s(pBase->szReportPath, sizeof(pBase->szReportPath), reportA);
+
+    TCHAR currentDirectory[MAX_PATH] = {};
+    GetCurrentDirectory(MAX_PATH, currentDirectory);
+    CString iniPath;
+    iniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
+
+    CString value;
+    value.Format(_T("%d"), pBase->PortBaseSel);
+    WritePrivateProfileString(_T("Base"), _T("PortBaseSel"), value, iniPath);
+    value.Format(_T("%d"), pBase->PortMappingSel);
+    WritePrivateProfileString(_T("Base"), _T("PortMappingSel"), value, iniPath);
+    value.Format(_T("%d"), pBase->ForceRomMode);
+    WritePrivateProfileString(_T("Base"), _T("ForceRomMode"), value, iniPath);
+    value.Format(_T("%d"), pBase->bSnSeparateIni ? 1 : 0);
+    WritePrivateProfileString(_T("Base"), _T("SnSeparateIni"), value, iniPath);
+    WritePrivateProfileString(_T("Base"), _T("RemoteSnPath"), m_remoteSnPath, iniPath);
+    WritePrivateProfileString(_T("Base"), _T("ReportPath"), m_reportPath, iniPath);
+
     MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
+    CDialogEx::OnOK();
 }
 
 BEGIN_MESSAGE_MAP(CDialogBaseSet, CDialogBase)
@@ -98,7 +116,9 @@ void CDialogBaseSet::OnBnClickedBtnSetRemoteSnSel()
 
     CFileDialog dlg(TRUE, _T("ini"), _T("Setting.ini"), OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
         _T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
-    dlg.m_ofn.lpstrInitialDir = initialDir;
+    
+    LPCTSTR pszDir = initialDir;
+    dlg.m_ofn.lpstrInitialDir = pszDir;
 
     if (dlg.DoModal() == IDOK)
     {
@@ -113,7 +133,7 @@ void CDialogBaseSet::OnBnClickedBtnSetReportSel()
     GetCurrentDirectory(MAX_PATH, currentDirectory);
     CString initialDir(currentDirectory);
 
-    CFolderPickerDialog dlg(initialDir, OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, this, 0);
+    CFolderPickerDialog dlg(initialDir, OFN_PATHMUSTEXIST, this, 0);
     if (dlg.DoModal() == IDOK)
     {
         m_reportPath = dlg.GetPathName();

@@ -19,7 +19,7 @@ typedef struct SparkLog_Config
     char serial_number[58];
     char start_date[32];
     char start_time[32];
-    char build_time[32];
+    int build_time;
     char state[32];
     UINT32 error_code;
 
