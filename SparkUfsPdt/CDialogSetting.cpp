@@ -388,6 +388,7 @@ void CDialogSetting::OnBnClickedBtnSettingSaveAs()
 		if (SaveToFile(m_lastSavePath, true, true))
 		{
 			MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
+			EndDialog(IDOK);
 		}
 	}
 }
@@ -408,6 +409,7 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 	if (SaveToFile(m_lastSavePath, true, true))
 	{
 		MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
+		EndDialog(IDOK);
 	}
 }
 

@@ -100,8 +100,8 @@ public:
     int UfsReadPortInfo(PCHAR pData);
     int UfsWritePortInfo(PCHAR pData);
 
-    int UfsVcmdStart(PCHAR pData);
-    int UfsVcmdEnd(PCHAR pData);
+    int UfsVcmdStart(PCHAR pData = nullptr);
+    int UfsVcmdEnd(PCHAR pData= nullptr);
     int UfsVcmdWrite(PCHAR pData, UCHAR flag);
     int UfsVcmdRead(PCHAR pData, UCHAR flag);
 
@@ -113,5 +113,6 @@ protected:
 
     U_CDB m_Cdb = { 0 };
     PCHAR m_Buffer = nullptr;
+    PCHAR m_pData = nullptr;
     int m_nDriverMode;
 };

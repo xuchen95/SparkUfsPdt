@@ -31,10 +31,11 @@ void SparkLog_Init();
 // Append a line to the production log file (thread-safe). Line should not contain trailing newline.
 void SparkLog_Append(const std::string& line);
 
-// (removed) SparkLog_EnqueueLine was unused and removed to avoid dead API surface.
-
 // Close logging subsystem and release resources. Safe to call multiple times.
 void SparkLog_Close();
+
+// Set report output directory (ANSI path). Log file name will be TF_LOG.log under this directory.
+void SparkLog_SetReportPath(const char* reportPath);
 
 // Enqueue a production log record to be written asynchronously by the log thread.
 void SparkLog_EnqueuePdtLog(const pdt_log_config_t& cfg);

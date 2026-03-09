@@ -1,11 +1,11 @@
-﻿
-// SparkUfsPdt.cpp: defines application behavior.
+﻿// SparkUfsPdt.cpp: defines application behavior.
 //
 
 #include "pch.h"
 #include "framework.h"
 #include "SparkUfsPdt.h"
 #include "SparkUfsPdtDlg.h"
+#include "../SparkLog/SparkLog.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -99,5 +99,13 @@ BOOL CSparkUfsPdtApp::InitInstance()
     // Since the dialog has been closed, return FALSE so that we exit the
     // application rather than start the application's message pump.
     return FALSE;
+}
+
+int CSparkUfsPdtApp::ExitInstance()
+{
+    // 程序退出时关闭日志线程
+    SparkLog_Close();
+    
+    return CWinApp::ExitInstance();
 }
 

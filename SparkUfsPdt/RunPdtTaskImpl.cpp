@@ -23,6 +23,12 @@ using namespace spark::sm3350;
 CRITICAL_SECTION CSparkUfsPdtDlg::g_logLock;
 bool CSparkUfsPdtDlg::g_logLockInited = false;
 
+// 日志功能在模块加载时初始化
+struct SparkLogAutoInit {
+    SparkLogAutoInit() { SparkLog_Init(); }
+};
+static SparkLogAutoInit g_sparkLogAutoInit;
+
 // Use the TaskProgressMsg defined in the dialog header for UI communication.
 // Worker threads allocate and post pointers to this structure to the UI
 // thread (which will delete the pointer after processing).
@@ -34,25 +40,9 @@ struct StageRecord { CString name; int code; double ms; CString timeStr; };
 
 // Helper: append a line to the log file protected by a critical section.
 // This function is thread-safe and can be called from worker threads.
-void CSparkUfsPdtDlg::AppendLogLine(const CString& line)
-{
-    if (!g_logLockInited)
-    {
-        InitializeCriticalSection(&g_logLock);
-        g_logLockInited = true;
-    }
-    EnterCriticalSection(&g_logLock);
-    FILE* fp = NULL;
-    errno_t e = fopen_s(&fp, "pdt_run_log.txt", "a");
-    if (e == 0 && fp)
-    {
-        CT2A lineA(line);
-        fprintf(fp, "%s\n", lineA.m_psz);
-        fclose(fp);
-    }
-    LeaveCriticalSection(&g_logLock);
-}
 
+
+CHAR g_szPrmData[512*0x08];
 
 static int RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
 {
@@ -62,7 +52,6 @@ static int RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& l
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-
     do
     {
         if ((ret = sm3350.UfsPowerOff()) != ERROR_SUCCESS) break;
@@ -189,6 +178,54 @@ static int MpExitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& l
     return ret;
 }
 
+static int SetSnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("SetSn") };
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+
+    do
+    {
+        if ((ret = sm3350.UfsSetSrialNumberString(g_szPrmData)) != ERROR_SUCCESS) break;
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("SetSn Failed") };
+        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        lg.error_code = ret;
+        ZeroMemory(lg.state, sizeof(lg.state));
+        strncpy_s(lg.state, _countof(lg.state), "SetSn Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+static int SetMdtStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("SetMdt") };
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+
+    do
+    {
+        if ((ret = sm3350.UfsSetManuDate(g_szPrmData)) != ERROR_SUCCESS) break;
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("SetMdt Failed") };
+        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        lg.error_code = ret;
+        ZeroMemory(lg.state, sizeof(lg.state));
+        strncpy_s(lg.state, _countof(lg.state), "SetMdt Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
 int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 {
     auto tStart = std::chrono::steady_clock::now();
@@ -238,16 +275,7 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         strncpy_s(lg.state, _countof(lg.state), (ret == ERROR_SUCCESS) ? "Success" : "Failed", _TRUNCATE);
     }
 
-    CString cfgLine;
-    cfgLine.Format(_T("PDT_CFG | func=%S | port=%u | start=%S %S | build=%d | state=%S | err=0x%X"),
-        lg.func_name,
-        (unsigned)lg.ufs_port,
-        lg.start_date,
-        lg.start_time,
-        lg.build_time,
-        lg.state,
-        lg.error_code);
-    CSparkUfsPdtDlg::AppendLogLine(cfgLine);
+    SparkLog_EnqueuePdtLog(lg);
 
     TaskProgressMsg* finalMsg = new TaskProgressMsg{ portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed") };
     if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)finalMsg, 0);

@@ -1,5 +1,4 @@
-﻿
-// SparkUfsPdt.h: PROJECT_NAME 应用程序的主头文件
+﻿// SparkUfsPdt.h: PROJECT_NAME 应用程序的主头文件
 //
 
 #pragma once
@@ -23,6 +22,7 @@ public:
 // 重写
 public:
 	virtual BOOL InitInstance();
+	virtual int ExitInstance();
 
 // 实现
 

@@ -624,9 +624,9 @@ int spark::sm3350::CSparkSm3350Util::UfsSetSrialNumberString(PCHAR pData)
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdWrite(pData,FLAG_WRITE_PSN))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;
@@ -638,9 +638,9 @@ int spark::sm3350::CSparkSm3350Util::UfsSetManuDate(PCHAR pData)
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdWrite(pData, FLAG_WRITE_MDT))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;

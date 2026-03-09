@@ -41,6 +41,7 @@ BOOL EnumSm3350CallbackFun(PSTORAGE_DEVICE_DESCRIPTOR psdd)
 CSm3350Vcmds::CSm3350Vcmds()
 {
     m_Buffer = (PCHAR)GlobalAlloc(GPTR, 65536 + 512);
+    m_pData = (PCHAR)GlobalAlloc(GPTR, 512);
 }
 
 CSm3350Vcmds::~CSm3350Vcmds()
@@ -50,6 +51,10 @@ CSm3350Vcmds::~CSm3350Vcmds()
     if (m_Buffer != nullptr)
     {
         GlobalFree(m_Buffer);
+    }
+    if (m_pData != nullptr)
+    {
+        GlobalFree(m_pData);
     }
 }
 
@@ -117,6 +122,10 @@ int CSm3350Vcmds::CloseDeivce()
 
 int CSm3350Vcmds::UfsWriteBufferUpiu(PCHAR pData, uint32_t cmd, uint32_t allocLen, UCHAR Len)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_WRITE_BUFFER_UPIU);
     m_Cdb.ufs1.cmd = _byteswap_ulong(cmd);
@@ -127,6 +136,10 @@ int CSm3350Vcmds::UfsWriteBufferUpiu(PCHAR pData, uint32_t cmd, uint32_t allocLe
 
 int CSm3350Vcmds::UfsReadBufferUpiu(PCHAR pData, uint32_t cmd, uint32_t allocLen, UCHAR Len)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_BUFFER_UPIU);
     m_Cdb.ufs1.cmd = _byteswap_ulong(cmd);
@@ -135,7 +148,7 @@ int CSm3350Vcmds::UfsReadBufferUpiu(PCHAR pData, uint32_t cmd, uint32_t allocLen
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, 1, m_Cdb);
 }
 
-int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEraseAllBlock)
+int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEraseGoodBlock)
 {
     int nRet;
     int i = 0, max = nSectorCnt / 0x80;
@@ -147,13 +160,11 @@ int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEra
         if (0 == i)
         {
             //first time set function and length
-            if (bEraseAllBlock) {
-                //EraseAllBlock
-                m_Cdb.ufs1.cmd = _byteswap_ulong(0xFBEE2260);
+            if (bEraseGoodBlock) {
+                m_Cdb.ufs1.cmd = _byteswap_ulong(0xCBAD1160);
             }
             else {
-                //EraseGoodBlock
-                m_Cdb.ufs1.cmd = _byteswap_ulong(0xCBAD1160);
+                m_Cdb.ufs1.cmd = _byteswap_ulong(0xFBEE2260);
             }
             //allocation length
             m_Cdb.ufs1.AllocLen = _byteswap_ulong(SECTOR2BYTE(nSectorCnt));
@@ -190,6 +201,10 @@ int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEra
 
 int CSm3350Vcmds::UfsMpStartMode(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_UFS_MP_START_MODE);
     m_Cdb.ufs1.uLen = 1;
@@ -198,6 +213,10 @@ int CSm3350Vcmds::UfsMpStartMode(PCHAR pData)
 
 int CSm3350Vcmds::UfsCardInit(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_UFS_CARD_INIT);
     m_Cdb.ufs1.uLen = 0x01;
@@ -207,6 +226,10 @@ int CSm3350Vcmds::UfsCardInit(PCHAR pData)
 
 int CSm3350Vcmds::UfsUpiuForceRomCodeModeForUfs(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_UPIU_FORCE_ROM_MODE_UFS);
     m_Cdb.ufs1.uLen = 1;
@@ -215,6 +238,10 @@ int CSm3350Vcmds::UfsUpiuForceRomCodeModeForUfs(PCHAR pData)
 
 int CSm3350Vcmds::UfsVccOffForceRomModeUfs(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_VCC_OFF_FORCE_ROM_MODE_UFS);
     m_Cdb.ufs1.uLen = 1;
@@ -223,6 +250,10 @@ int CSm3350Vcmds::UfsVccOffForceRomModeUfs(PCHAR pData)
 
 int CSm3350Vcmds::UfsPowerOn(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_UFS_POWER_ON);
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, 1, m_Cdb);
@@ -230,6 +261,10 @@ int CSm3350Vcmds::UfsPowerOn(PCHAR pData)
 
 int CSm3350Vcmds::UfsPowerOff(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_UFS_POWER_OFF);
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, 1, m_Cdb);
@@ -282,6 +317,10 @@ int CSm3350Vcmds::GetCmdResp()
 
 int CSm3350Vcmds::UfsWrite10(PCHAR pData, uint32_t lba, uint16_t allocLen, UCHAR Len)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs3.u16OpCode = _byteswap_ushort(CMD_WRITE_10);
     m_Cdb.ufs3.uIdx = 1;
@@ -293,6 +332,10 @@ int CSm3350Vcmds::UfsWrite10(PCHAR pData, uint32_t lba, uint16_t allocLen, UCHAR
 
 int CSm3350Vcmds::UfsRead10(PCHAR pData, uint32_t lba, uint16_t allocLen, UCHAR Len)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs3.u16OpCode = _byteswap_ushort(CMD_READ_10);
     m_Cdb.ufs3.uIdx = 1;
@@ -304,6 +347,10 @@ int CSm3350Vcmds::UfsRead10(PCHAR pData, uint32_t lba, uint16_t allocLen, UCHAR 
 
 int CSm3350Vcmds::UfsEnterH8(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_ENTER_H8);
     m_Cdb.ufs1.uLen = 1;
@@ -321,6 +368,10 @@ int CSm3350Vcmds::UfsExitH8(PCHAR pData)
 
 int CSm3350Vcmds::UfsReadCurrent(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_CURRENT);
     m_Cdb.ufs1.uLen = 1;
@@ -329,6 +380,10 @@ int CSm3350Vcmds::UfsReadCurrent(PCHAR pData)
 
 int CSm3350Vcmds::UfsSetGpio(PCHAR pData, UCHAR iccq_0_ohm, UCHAR iccq_1_ohm, UCHAR iccq_10_ohm, UCHAR icc_0_ohm, UCHAR icc_1_ohm, UCHAR icc_10_ohm)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_SET_GPIO);
     m_Cdb.ub[0x03] = iccq_0_ohm;
@@ -343,6 +398,10 @@ int CSm3350Vcmds::UfsSetGpio(PCHAR pData, UCHAR iccq_0_ohm, UCHAR iccq_1_ohm, UC
 
 int CSm3350Vcmds::UfsReadDescriptor(PCHAR pData, UCHAR idn, UCHAR idx, UCHAR sel, UINT32 length)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.descriptor.u16OpCode = _byteswap_ushort(CMD_READ_DESCRIPTOR);
     m_Cdb.descriptor.idn = idn;
@@ -400,6 +459,10 @@ int CSm3350Vcmds::UfsReadStringDescriptor(PCHAR pData, UCHAR idx, UINT32 length)
 
 int CSm3350Vcmds::UfsReadAttributes(PCHAR pData, UCHAR idn)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.descriptor.u16OpCode = _byteswap_ushort(CMD_READ_DESCRIPTOR);
     m_Cdb.descriptor.rsv1 = 0x02;
@@ -410,6 +473,10 @@ int CSm3350Vcmds::UfsReadAttributes(PCHAR pData, UCHAR idn)
 
 int CSm3350Vcmds::UfsFlagRead(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.descriptor.u16OpCode = _byteswap_ushort(CMD_READ_DESCRIPTOR);
     m_Cdb.descriptor.rsv1 = 0x01;
@@ -420,6 +487,10 @@ int CSm3350Vcmds::UfsFlagRead(PCHAR pData)
 
 int CSm3350Vcmds::UfsTestUnitReady(PCHAR pData, UCHAR lun)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_TEST_UNIT_READY);
     m_Cdb.ub[0x03] = lun;
@@ -429,6 +500,10 @@ int CSm3350Vcmds::UfsTestUnitReady(PCHAR pData, UCHAR lun)
 
 int CSm3350Vcmds::UfsWriteAttribute(PCHAR pData, UCHAR idn, UINT32 value)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.attribute.u16OpCode = _byteswap_ushort(CMD_WRITE_ATTRIBUTE);
     m_Cdb.attribute.idn = idn;
@@ -439,6 +514,10 @@ int CSm3350Vcmds::UfsWriteAttribute(PCHAR pData, UCHAR idn, UINT32 value)
 
 int CSm3350Vcmds::UfsWriteConfigDescriptorOrSetPartition(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_WRITE_CONFIG_DESCRIPTOR_OR_SET_PARTITION);
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_OUT, pData, 1, m_Cdb);
@@ -446,6 +525,10 @@ int CSm3350Vcmds::UfsWriteConfigDescriptorOrSetPartition(PCHAR pData)
 
 int CSm3350Vcmds::UfsConfigReferenceClock(PCHAR pData, UCHAR idn)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ref_clock.u16OpCode = _byteswap_ushort(CMD_CONFIG_REFERENCE_CLOCK);
     m_Cdb.ref_clock.value = _byteswap_ulong(0x00020122);
@@ -456,12 +539,15 @@ int CSm3350Vcmds::UfsConfigReferenceClock(PCHAR pData, UCHAR idn)
 
 int CSm3350Vcmds::UfsMpExit(PCHAR pData)
 {
-    //return UfsWriteBufferUpiu(pData, 0x45584954, 0x00000000, 0x00);
     return UfsWriteBufferUpiu(pData, 0x45584954, 0x00001000, 0x08);
 }
 
 int CSm3350Vcmds::UfsReadPortInfo(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_Buffer;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_PORT_ID);
     m_Cdb.ub[0x03] = 0x80;
@@ -472,6 +558,10 @@ int CSm3350Vcmds::UfsReadPortInfo(PCHAR pData)
 
 int CSm3350Vcmds::UfsWritePortInfo(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_Buffer;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_WRITE_PORT_ID);
     m_Cdb.ub[0x03] = 0x80;
@@ -482,6 +572,10 @@ int CSm3350Vcmds::UfsWritePortInfo(PCHAR pData)
 
 int CSm3350Vcmds::UfsVcmdStart(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_BUFFER_UPIU);
     m_Cdb.ufs1.cmd = _byteswap_ulong(0x004D4554);
@@ -492,6 +586,10 @@ int CSm3350Vcmds::UfsVcmdStart(PCHAR pData)
 
 int CSm3350Vcmds::UfsVcmdEnd(PCHAR pData)
 {
+    if (pData == nullptr)
+    {
+        pData = m_pData;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_BUFFER_UPIU);
     m_Cdb.ufs1.cmd = _byteswap_ulong(0x004D4552);
@@ -502,6 +600,10 @@ int CSm3350Vcmds::UfsVcmdEnd(PCHAR pData)
 
 int CSm3350Vcmds::UfsVcmdWrite(PCHAR pData, UCHAR flag)
 {
+    if (pData == nullptr)
+    {
+        pData = m_Buffer;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.vcmd.u16OpCode = _byteswap_ushort(CMD_VCMD_WRITE);
     m_Cdb.vcmd.flag = flag;
@@ -511,6 +613,10 @@ int CSm3350Vcmds::UfsVcmdWrite(PCHAR pData, UCHAR flag)
 
 int CSm3350Vcmds::UfsVcmdRead(PCHAR pData, UCHAR flag)
 {
+    if (pData == nullptr)
+    {
+        pData = m_Buffer;
+    }
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.vcmd.u16OpCode = _byteswap_ushort(CMD_VCMD_READ);
     m_Cdb.vcmd.flag = flag;

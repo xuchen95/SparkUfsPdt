@@ -2,6 +2,7 @@
 #include "CDialogBaseSet.h"
 #include "Resource.h"
 #include <atlconv.h>
+#include "../SparkLog/SparkLog.h"
 
 IMPLEMENT_DYNAMIC(CDialogBaseSet, CDialogBase)
 
@@ -81,6 +82,7 @@ void CDialogBaseSet::OnOK()
         return;
     }
     strcpy_s(pBase->szReportPath, sizeof(pBase->szReportPath), reportA);
+    SparkLog_SetReportPath(pBase->szReportPath);
 
     TCHAR currentDirectory[MAX_PATH] = {};
     GetCurrentDirectory(MAX_PATH, currentDirectory);

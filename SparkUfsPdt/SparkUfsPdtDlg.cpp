@@ -10,6 +10,7 @@
 #include "CDialogSetting.h"
 #include "CDialogBaseSet.h"
 #include "ThreadPool.h"
+#include "../SparkLog/SparkLog.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -148,6 +149,13 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     CString baseIniPath;
     baseIniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
     CDialogBase::LoadBaseSettingFromIni(baseIniPath);
+    if (PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting())
+    {
+        if (pBase->szReportPath[0] != '\0')
+        {
+            SparkLog_SetReportPath(pBase->szReportPath);
+        }
+    }
 
     if (m_mainMenu.LoadMenu(IDR_MAINMENU))
     {
@@ -454,6 +462,8 @@ void CSparkUfsPdtDlg::OnDestroy()
     {
         s_pool.reset(); // destructor will join worker threads
     }
+
+    SparkLog_Close();
 
     if (g_logLockInited)
     {

@@ -25,24 +25,45 @@ static bool g_sparkLogInited = false;
 // background queue for production logs
 static std::thread g_logThread;
 static std::mutex g_queueMutex;
+static std::mutex g_pathMutex;
 static std::condition_variable g_queueCv;
 static std::queue<pdt_log_config_t> g_logQueue;
 static bool g_logThreadRunning = false;
 static bool g_logThreadStop = false;
 
-static const wchar_t* LOG_DIR = L".\\LogInfo";
-static const wchar_t* LOG_FILE = L".\\LogInfo\\TF_LOG.log";
-
-// No AnsiToW conversion needed in multibyte build; format ANSI strings directly.
+static std::string g_logDir = "./XHSUM";
+static std::string g_logFile = "./XHSUM/TF_LOG.log";
 
 // Ensure the log directory exists. No-op if already present.
 static void EnsureLogDir()
 {
-    // Create directory if not exists
-    CreateDirectoryW(LOG_DIR, NULL);
+    std::string dir;
+    {
+        std::lock_guard<std::mutex> lk(g_pathMutex);
+        dir = g_logDir;
+    }
+    CreateDirectoryA(dir.c_str(), NULL);
 }
 
-// SparkLog_EnqueueLine removed - no longer used.
+void SparkLog_SetReportPath(const char* reportPath)
+{
+    if (!reportPath || reportPath[0] == '\0')
+        return;
+
+    std::string path(reportPath);
+    // Remove trailing slashes
+    while (!path.empty() && (path.back() == '\\' || path.back() == '/'))
+        path.pop_back();
+    if (path.empty())
+        return;
+
+    std::string logFile = path + "/TF_LOG.log";
+    {
+        std::lock_guard<std::mutex> lk(g_pathMutex);
+        g_logDir = path;
+        g_logFile = logFile;
+    }
+}
 
 static void LogWorker()
 {
@@ -63,36 +84,26 @@ static void LogWorker()
             // format ANSI line directly into a char buffer
             char lineAnsi[2048];
             _snprintf_s(lineAnsi, _countof(lineAnsi), _TRUNCATE,
-                "%s %s | Port=%d | Func=%s | CardId=%s | FW=%s | APP=%s | Tester=%s | MID=0x%02X | OID=0x%02X | Manu=%s | Product=%s | SN=%s | Start=%s %s | Build=%s | State=%s | Error=0x%X",
-                cfg.start_date, cfg.start_time, (int)cfg.ufs_port,
+                "Port=%d,Func=%s,CardId=%s,FW=%s,APP=%s,Tester=%s,MID=0x%02X,OID=0x%02X,Manu=%s,Product=%s,SN=%s,Start=%s %s,Build=%d,State=%s,Error=0x%X",
+                (int)cfg.ufs_port,
                 cfg.func_name, cfg.card_id, cfg.fw_version, cfg.app_version, cfg.tester_version,
                 (unsigned char)cfg.mid[0], (unsigned char)cfg.oid[0], cfg.manufacturer, cfg.product_name,
                 cfg.serial_number, cfg.start_date, cfg.start_time, cfg.build_time, cfg.state, cfg.error_code);
 
-            // convert ANSI line to UTF-8 for consistent log encoding
-            int wideLen = MultiByteToWideChar(CP_ACP, 0, lineAnsi, -1, NULL, 0);
-            if (wideLen > 0)
+            // write to file as ANSI (no conversion)
+            FILE* fp = NULL;
+            std::string logFilePath;
             {
-                std::wstring wide(wideLen, L'\0');
-                MultiByteToWideChar(CP_ACP, 0, lineAnsi, -1, &wide[0], wideLen);
-                if (!wide.empty() && wide.back() == L'\0') wide.pop_back();
-
-                int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, NULL, 0, NULL, NULL);
-                if (utf8Len > 0)
-                {
-                    std::string utf8(utf8Len, '\0');
-                    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, &utf8[0], utf8Len, NULL, NULL);
-                    if (!utf8.empty() && utf8.back() == '\0') utf8.pop_back();
-
-                    // write to file
-                    FILE* fp = NULL;
-                    errno_t e = _wfopen_s(&fp, LOG_FILE, L"a, ccs=UTF-8");
-                    if (e == 0 && fp)
-                    {
-                        fprintf(fp, "%s\n", utf8.c_str());
-                        fclose(fp);
-                    }
-                }
+                std::lock_guard<std::mutex> lk(g_pathMutex);
+                logFilePath = g_logFile;
+            }
+            errno_t e = fopen_s(&fp, logFilePath.c_str(), "ab");
+            if (e == 0 && fp)
+            {
+                size_t len = strlen(lineAnsi);
+                fwrite(lineAnsi, 1, len, fp);
+                fputc('\n', fp);
+                fclose(fp);
             }
 
             lk.lock();
@@ -125,36 +136,18 @@ void SparkLog_Append(const std::string& line)
     if (!g_sparkLogInited)
         SparkLog_Init();
 
-    // convert ANSI/multibyte string to UTF-8 and append to LOG_FILE
-    int wideLen = MultiByteToWideChar(CP_ACP, 0, line.c_str(), -1, NULL, 0);
-    std::wstring wide;
-    if (wideLen > 0)
-    {
-        wide.resize(wideLen);
-        MultiByteToWideChar(CP_ACP, 0, line.c_str(), -1, &wide[0], wideLen);
-        if (!wide.empty() && wide.back() == L'\0') wide.pop_back();
-    }
-
-    int utf8Len = 0;
-    std::string utf8;
-    if (!wide.empty())
-    {
-        utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, NULL, 0, NULL, NULL);
-        if (utf8Len > 0)
-        {
-            utf8.resize(utf8Len);
-            WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, &utf8[0], utf8Len, NULL, NULL);
-            if (!utf8.empty() && utf8.back() == '\0') utf8.pop_back();
-        }
-    }
-
     EnterCriticalSection(&g_sparkLogLock);
     FILE* fp = NULL;
-    errno_t e = _wfopen_s(&fp, LOG_FILE, L"a, ccs=UTF-8");
+    std::string logFilePath;
+    {
+        std::lock_guard<std::mutex> lk(g_pathMutex);
+        logFilePath = g_logFile;
+    }
+    errno_t e = fopen_s(&fp, logFilePath.c_str(), "ab");
     if (e == 0 && fp)
     {
-        if (!utf8.empty()) fprintf(fp, "%s\n", utf8.c_str());
-        else fprintf(fp, "%s\n", line.c_str());
+        fwrite(line.c_str(), 1, line.size(), fp);
+        fputc('\n', fp);
         fclose(fp);
     }
     LeaveCriticalSection(&g_sparkLogLock);
