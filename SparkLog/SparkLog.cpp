@@ -173,6 +173,14 @@ void SparkLog_Close()
             g_logThreadRunning = false;
         }
     }
+
+    // Release heap buffers for path strings so they do not appear in
+    // differential memory-leak reports taken after this call returns.
+    {
+        std::lock_guard<std::mutex> lk(g_pathMutex);
+        g_logDir.clear();  g_logDir.shrink_to_fit();
+        g_logFile.clear(); g_logFile.shrink_to_fit();
+    }
 }
 
 void SparkLog_EnqueuePdtLog(const pdt_log_config_t& cfg)

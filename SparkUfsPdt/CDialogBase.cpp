@@ -74,3 +74,58 @@ void CDialogBase::DoDataExchange(CDataExchange* pDX)
 {
     CDialogEx::DoDataExchange(pDX);
 }
+
+void CDialogBase::LoadRemoteSnToMainParam()
+{
+    // 检查是否启用了独立序列号 INI 文件
+    if (!s_baseOption.bSnSeparateIni)
+        return;
+
+    // 检查远程序列号路径是否有效
+    if (strlen(s_baseOption.szRemoteSnPath) == 0)
+        return;
+
+    CString iniPath = CA2T(s_baseOption.szRemoteSnPath);
+    
+    // 检查文件是否存在
+    if (GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+        return;
+
+    WCHAR wbuffer[256] = {};
+    int len = 0;
+    
+    // 读取 Meto
+    ZeroMemory(s_sharedOption.mainPrm.meto, sizeof(s_sharedOption.mainPrm.meto));
+    len = GetPrivateProfileStringW(L"TEST", L"Meto", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    if (len > 0)
+    {
+        wcsncpy_s(s_sharedOption.mainPrm.meto, _countof(s_sharedOption.mainPrm.meto), wbuffer, _TRUNCATE);
+    }
+    
+    // 读取 SerialNumber (PSN_Start)
+    ZeroMemory(wbuffer, sizeof(wbuffer));
+    ZeroMemory(s_sharedOption.mainPrm.psn_start, sizeof(s_sharedOption.mainPrm.psn_start));
+    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    if (len > 0)
+    {
+        wcsncpy_s(s_sharedOption.mainPrm.psn_start, _countof(s_sharedOption.mainPrm.psn_start), wbuffer, _TRUNCATE);
+    }
+    
+    // 读取 SerialNumber_End (PSN_End)
+    ZeroMemory(wbuffer, sizeof(wbuffer));
+    ZeroMemory(s_sharedOption.mainPrm.psn_end, sizeof(s_sharedOption.mainPrm.psn_end));
+    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber_End", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    if (len > 0)
+    {
+        wcsncpy_s(s_sharedOption.mainPrm.psn_end, _countof(s_sharedOption.mainPrm.psn_end), wbuffer, _TRUNCATE);
+    }
+    
+    // 读取 SerialNumber_Mask
+    ZeroMemory(wbuffer, sizeof(wbuffer));
+    ZeroMemory(s_sharedOption.mainPrm.psn_mask, sizeof(s_sharedOption.mainPrm.psn_mask));
+    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber_Mask", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    if (len > 0)
+    {
+        wcsncpy_s(s_sharedOption.mainPrm.psn_mask, _countof(s_sharedOption.mainPrm.psn_mask), wbuffer, _TRUNCATE);
+    }
+}

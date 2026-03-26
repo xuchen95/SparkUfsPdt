@@ -50,7 +50,11 @@ private:
 	CString m_pnm;
 	CString m_psn_start;
 	CString m_psn_end;
+	CString m_psn_mask;
 	CString m_mdt;
 	CString m_prv;
 	CString m_mnm;
+	CString m_meto;
+public:
+	afx_msg void OnEnChangeEditSnMdt();
 };

@@ -392,6 +392,7 @@
     <ResourceCompile Include="SparkUfsPdt.rc" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="MEMORY_LEAK_ANALYSIS.md" />
     <None Include="res\SparkUfsPdt.rc2" />
   </ItemGroup>
   <ItemGroup>

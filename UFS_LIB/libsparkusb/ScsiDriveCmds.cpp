@@ -51,7 +51,7 @@ int CScsiDriveCmds::ScsiSendCmd(UCHAR dataIn, PCHAR dataBuffer, UCHAR sectorCnt,
         {
             break;
         }
-        Sleep(50);
+        Sleep(100);
     } while (nRetry--);
 
     return nRet;

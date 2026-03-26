@@ -17,9 +17,11 @@ typedef struct main_param
 	WCHAR pnm[16];
 	WCHAR psn_start[32];
 	WCHAR psn_end[32];
-	WCHAR mdt[4];
+	WCHAR psn_mask[32];
+	WCHAR mdt[8];
 	WCHAR prv[4];
-	WCHAR mnm[8];
+	WCHAR mnm[16];
+	WCHAR meto[32];
 
 }MAIN_PARAM, * PMAIN_PARAM;
 
@@ -34,11 +36,11 @@ typedef struct qc_param
 	char mid[1];
 	WCHAR oid[31];
 	BOOL bCheckMnm;
-	WCHAR mnm[8];
+	WCHAR mnm[16];
 	BOOL bCheckPrv;
 	WCHAR prv[4];
 	BOOL bCheckMdt;
-	WCHAR mdt[4];
+	WCHAR mdt[8];
 	BOOL bCheckIsp;
 	char isp[32];
 	BOOL bCheckSramTest;
@@ -76,6 +78,7 @@ public:
 	void SetBaseSetting(PST_UFS_BASE_SETTING pOption);
 	PST_UFS_BASE_SETTING GetBaseSetting() const;
 	static void LoadBaseSettingFromIni(const CString& path);
+	static void LoadRemoteSnToMainParam();
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);

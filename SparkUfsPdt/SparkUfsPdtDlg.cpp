@@ -11,12 +11,68 @@
 #include "CDialogBaseSet.h"
 #include "ThreadPool.h"
 #include "../SparkLog/SparkLog.h"
+#include <cerrno>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 //maybe have to change include path
 using namespace spark::sm3350;
+
+char g_UfsIsp[UFS_ISP_SIZE] = {};
+
+static bool AcquireAndAdvanceSerialNumber(CString& allocatedSn)
+{
+    allocatedSn.Empty();
+
+    PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting();
+    if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
+    {
+        return false;
+    }
+
+    CString iniPath = CA2T(pBase->szRemoteSnPath);
+    if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+    {
+        return false;
+    }
+
+    WCHAR snBuf[128] = {};
+    DWORD len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snBuf, _countof(snBuf), CT2W(iniPath));
+    if (len == 0)
+    {
+        return false;
+    }
+
+    CStringW currentSn(snBuf);
+    currentSn.Trim();
+    if (currentSn.IsEmpty())
+    {
+        return false;
+    }
+
+    errno = 0;
+    wchar_t* endPtr = nullptr;
+    unsigned long long currentValue = wcstoull(currentSn, &endPtr, 10);
+    if (errno != 0 || endPtr == currentSn.GetString() || *endPtr != L'\0')
+    {
+        return false;
+    }
+
+    allocatedSn = CString(currentSn);
+
+    unsigned long long nextValue = currentValue + 1;
+    int width = currentSn.GetLength();
+    CStringW nextSn;
+    nextSn.Format(L"%0*llu", width > 0 ? width : 1, nextValue);
+
+    if (!WritePrivateProfileStringW(L"TEST", L"SerialNumber", nextSn, CT2W(iniPath)))
+    {
+        return false;
+    }
+
+    return true;
+}
 
 static bool ReadTextFileA(const CString& path, CStringA& content)
 {
@@ -418,6 +474,14 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     }
     ResetTaskCounts(totalReady);
 
+    bool isFt3Config = false;
+    if (!m_settingPath.IsEmpty())
+    {
+        CString upperPath = m_settingPath;
+        upperPath.MakeUpper();
+        isFt3Config = (upperPath.Find(_T("FT3")) >= 0);
+    }
+
     // Initialize static pool if not created. Use 4 threads as default.
     if (!s_pool)
     {
@@ -436,6 +500,21 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
             CString status = pList->GetItemText(i, 2);
             if (status.CompareNoCase(_T("Ready")) == 0)
             {
+                if (isFt3Config)
+                {
+                    CString snAllocated;
+                    if (AcquireAndAdvanceSerialNumber(snAllocated))
+                    {
+                        pList->SetItemText(i, 6, snAllocated);
+                    }
+                    else
+                    {
+                        CString err;
+                        err.Format(_T("Read/advance SerialNumber failed for port %d"), i + 1);
+                        AppendLogLine(err);
+                    }
+                }
+
                 try {
                     s_pool->enqueue([this, i]() { return this->RunPdtTask(i); });
                 }
@@ -659,19 +738,39 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
     {
         pStart->EnableWindow(TRUE);
     }
-
-    if (pOption && pOption->mainPrm.strIspPath[0])
+    if (isQc)
     {
-        CString configuredPath = CString(pOption->mainPrm.strIspPath);
-        if (!configuredPath.IsEmpty() && GetFileAttributesW((LPCWSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
+        if (pOption && pOption->qcPrm.szSramTestPath[0])
         {
-            if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
+            CString configuredPath = CString(pOption->qcPrm.szSramTestPath);
+            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
             {
-                MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
+                {
+                    //MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
+                }
+                else
+                {
+                    MessageBox(_T("SRAM Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                }
             }
-            else
+        }
+    }
+    else
+    {
+        if (pOption && pOption->mainPrm.strIspPath[0])
+        {
+            CString configuredPath = CString(pOption->mainPrm.strIspPath);
+            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
             {
-                MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
+                {
+                    //MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
+                }
+                else
+                {
+                    MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                }
             }
         }
     }
@@ -745,3 +844,16 @@ void CSparkUfsPdtDlg::OnSettingConfig()
     CDialogBaseSet dlg(this);
     dlg.DoModal();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

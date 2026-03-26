@@ -7,6 +7,7 @@
 #define CMD_WRITE_BUFFER_UPIU 0xD2E0
 #define CMD_READ_BUFFER_UPIU 0xD2E1
 #define CMD_WRITE_1024K_ISP_MP 0xD0F0
+#define CMD_WRITE_SRAM_MP 0xD0F0
 #define CMD_UFS_MP_START_MODE 0xD1E1
 #define CMD_UFS_CARD_INIT 0xD1E2
 #define CMD_UPIU_FORCE_ROM_MODE_UFS 0xD1E0
@@ -105,6 +106,7 @@ public:
     int UfsVcmdWrite(PCHAR pData, UCHAR flag);
     int UfsVcmdRead(PCHAR pData, UCHAR flag);
 
+    int UfsWriteSramMp(PCHAR pData, UINT nSectorCnt);
 protected:
     int ScsiCmdDataIn(PCHAR dataBuffer);
     int ScsiCmdDataOut(PCHAR dataBuffer);

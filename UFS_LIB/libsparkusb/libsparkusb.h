@@ -116,7 +116,7 @@ namespace spark
             /************************************************************************/
             /* SMI SM3350 VCMD                                                       */
             /************************************************************************/
-            int UfsUpiuForceRomCodeModeForUfs(PCHAR pData = nullptr);
+            int UpiuForceRom(PCHAR pData = nullptr);
             /// <summary>
             /// Query sm3350 information
             /// </summary>
@@ -188,7 +188,19 @@ namespace spark
             /// </summary>
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
-            int UfsCheckSram(PCHAR pData = nullptr);
+            int UfsCheckSram2(PCHAR pData1, PCHAR pData2);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsWriteSramMp(PCHAR pData, UINT nSectorCnt);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsReadSramResult(PCHAR pData, UINT nSectorCnt);
 
         public:
             PCHAR m_szDevicePath = nullptr;

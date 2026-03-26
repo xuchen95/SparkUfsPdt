@@ -9,6 +9,7 @@
 #define IDD_DLG_SETTING                 134
 #define IDD_DIALOG1                     136
 #define IDD_DIALOG_BASE_SET             136
+#define IDR_MAINMENU                    200
 #define IDC_BTN_PDT_SETTING             1000
 #define IDC_BTN_SCAN_DEVICE             1001
 #define IDC_BTN_START_PDT               1002
@@ -69,7 +70,6 @@
 #define IDC_BTN_SET_REMOTE_SN_SEL       1050
 #define IDC_EDIT_SET_REPORT             1051
 #define IDC_BTN_SET_REPORT_SEL          1053
-#define IDR_MAINMENU                    200
 #define ID_SETTING_CONFIG               32771
 
 // Next default values for new objects

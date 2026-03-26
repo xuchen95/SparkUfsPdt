@@ -6,7 +6,7 @@
 #include <memory>
 #include "libsparkusb.h"
 #include "CDialogBase.h"
-static char g_UfsIsp[UFS_ISP_SIZE];
+extern char g_UfsIsp[UFS_ISP_SIZE];
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogBase

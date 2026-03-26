@@ -458,7 +458,7 @@ int spark::sm3350::CSparkSm3350Util::DeviceSelect(UCHAR idx /*= 0*/)
     }
 }
 
-int spark::sm3350::CSparkSm3350Util::UfsUpiuForceRomCodeModeForUfs(PCHAR pData)
+int spark::sm3350::CSparkSm3350Util::UpiuForceRom(PCHAR pData)
 {
     TRACE_FUNC();
     int ret;
@@ -553,7 +553,7 @@ int spark::sm3350::CSparkSm3350Util::UfsMpStartMode(PCHAR pData)
     do
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsMpStartMode(pData))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;
 }
@@ -575,8 +575,9 @@ int spark::sm3350::CSparkSm3350Util::UfsMpExit(PCHAR pData)
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsMpExit(pData))) 
-            return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsMpExit(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+
     } while (0);
     return ERROR_SUCCESS;
 }
@@ -588,7 +589,7 @@ int spark::sm3350::CSparkSm3350Util::UfsCardInit(PCHAR pData)
     do
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsCardInit(pData))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;
 }
@@ -652,25 +653,47 @@ int spark::sm3350::CSparkSm3350Util::UfsCheckIsp(PCHAR pData)
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_ISP))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
     return ERROR_SUCCESS;
 }
 
-int spark::sm3350::CSparkSm3350Util::UfsCheckSram(PCHAR pData)
+int spark::sm3350::CSparkSm3350Util::UfsCheckSram2(PCHAR pData1, PCHAR pData2)
 {
     TRACE_FUNC();
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart(pData))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_SRAM1))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_SRAM2))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData1, FLAG_CHECK_SRAM1))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData2, FLAG_CHECK_SRAM2))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsWriteSramMp(PCHAR pData, UINT nSectorCnt)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsWriteSramMp(pData, nSectorCnt))) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsReadSramResult(PCHAR pData, UINT nSectorCnt)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData,1,0,8))) return ret;
     } while (0);
     return ERROR_SUCCESS;
 }
