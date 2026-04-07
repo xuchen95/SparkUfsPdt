@@ -11,7 +11,6 @@ class CDialogQcSetting : public CDialogBase
 public:
 	CDialogQcSetting(CWnd* pParent = nullptr);   // 标准构造函数
 	virtual ~CDialogQcSetting();
-	void SaveDataToUfsOption();
 
 // 对话框数据
 #ifdef AFX_DESIGN_TIME
@@ -19,6 +18,8 @@ public:
 #endif
 
 protected:
+	void DDX_CharArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize);
+	void DDX_HexArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize);
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 	virtual BOOL OnInitDialog();
 
@@ -36,23 +37,4 @@ protected:
 
 private:
 	void UpdateControlStates();
-
-	BOOL m_bCheckDiskInfo = FALSE;
-	int m_sectorCount = 0;
-	BOOL m_bCheckPnm = FALSE;
-	CString m_pnm;
-	BOOL m_bCheckMidOid = FALSE;
-	CString m_bankIdx;
-	CString m_mid;
-	CString m_oid;
-	BOOL m_bCheckMnm = FALSE;
-	CString m_mnm;
-	BOOL m_bCheckPrv = FALSE;
-	CString m_prv;
-	BOOL m_bCheckMdt = FALSE;
-	CString m_mdt;
-	BOOL m_bCheckIsp = FALSE;
-	CString m_isp;
-	BOOL m_bCheckSramTest = FALSE;
-	CString m_sramTestPath;
 };

@@ -5,6 +5,7 @@
 #include "SparkUfsPdt.h"
 #include "afxdialogex.h"
 #include "CDialogQcSetting.h"
+#include "PubFunc.h"
 
 
 // CDialogQcSetting 对话框
@@ -21,59 +22,107 @@ CDialogQcSetting::~CDialogQcSetting()
 {
 }
 
+void CDialogQcSetting::DDX_CharArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize)
+{
+	// 校验参数合法性
+	if (!pDX || !szArray || nArraySize <= 0)
+		return;
+
+	// 获取编辑框控件句柄
+	HWND hWndCtrl = pDX->PrepareEditCtrl(nIDC);
+	if (!hWndCtrl)
+		return;
+
+	// 双向数据交换逻辑
+	if (pDX->m_bSaveAndValidate)
+	{
+		// 方向1：控件 → CHAR数组（保存数据）
+		int nLen = ::GetWindowTextLengthA(hWndCtrl);
+		// 防止越界：预留结束符位置
+		if (nLen >= nArraySize)
+			nLen = nArraySize - 1;
+		// 获取文本并填充到数组
+		::GetWindowText(hWndCtrl, szArray, nArraySize);
+		// 确保强制结束符（防止脏数据）
+		szArray[nLen] = '\0';
+	}
+	else
+	{
+		// 方向2：CHAR数组 → 控件（初始化显示）
+		CString str(szArray, nArraySize);
+		str.AppendChar('\0');
+		::SetWindowText(hWndCtrl, str);
+	}
+}
+
+void CDialogQcSetting::DDX_HexArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize)
+{
+	// 校验参数合法性
+	if (!pDX || !szArray || nArraySize <= 0)
+		return;
+	
+	// 获取编辑框控件句柄
+	HWND hWndCtrl = pDX->PrepareEditCtrl(nIDC);
+	if (!hWndCtrl)
+		return;
+
+	// 双向数据交换逻辑
+	if (pDX->m_bSaveAndValidate)
+	{
+		// 方向1：控件 → CHAR数组（保存数据）
+		int nLen = ::GetWindowTextLengthA(hWndCtrl);
+		CString str;
+		::GetWindowTextA(hWndCtrl, str.GetBufferSetLength(nLen), nLen+1);
+		str.ReleaseBuffer();
+		CPubFunc::HexToBytes(str, reinterpret_cast<BYTE*>(szArray), nArraySize);
+	}
+	else
+	{
+		// 方向2：CHAR数组 → 控件（初始化显示）
+		CString str;
+		for (int i = 0; i < nArraySize; ++i)
+		{
+			if (i != 0 && (0x00 == szArray[i]))
+				break;
+			str.AppendFormat("%2.2X", (BYTE)szArray[i]);
+		}
+		::SetWindowText(hWndCtrl, str);
+	}
+}
+
 void CDialogQcSetting::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogBase::DoDataExchange(pDX);
+	PUFS_OPTION pOption = GetUfsOption();
+	DDX_Check(pDX, IDC_CHECK_QC_DISK_INFO, pOption->qcPrm.bCheckDiskInfo);
+	DDX_Text(pDX, IDC_EDIT_QC_SECTOR_CNT, pOption->qcPrm.n4KBCnt);
+	DDX_Check(pDX, IDC_CHECK_QC_PNM, pOption->qcPrm.bCheckPnm);
+	DDX_CharArray(pDX, IDC_EDIT_QC_PNM, pOption->qcPrm.pnm,sizeof(pOption->qcPrm.pnm));
+	DDX_Check(pDX, IDC_CHECK_QC_MID_OID, pOption->qcPrm.bCheckMidOid);
+	DDX_Text(pDX, IDC_EDIT_QC_BANK_INDEX, pOption->qcPrm.bankIdx);
 
-	DDX_Check(pDX, IDC_CHECK_QC_DISK_INFO, m_bCheckDiskInfo);
-	DDX_Text(pDX, IDC_EDIT_QC_SECTOR_CNT, m_sectorCount);
-	DDX_Check(pDX, IDC_CHECK_QC_PNM, m_bCheckPnm);
-	DDX_Text(pDX, IDC_EDIT_QC_PNM, m_pnm);
-	DDX_Check(pDX, IDC_CHECK_QC_MID_OID, m_bCheckMidOid);
-	DDX_Text(pDX, IDC_EDIT_QC_BANK_INDEX, m_bankIdx);
-	DDX_Text(pDX, IDC_EDIT_QC_MID, m_mid);
-	DDX_Text(pDX, IDC_EDIT_QC_OID, m_oid);
-	DDX_Check(pDX, IDC_CHECK_QC_MNM, m_bCheckMnm);
-	DDX_Text(pDX, IDC_EDIT_QC_MNM, m_mnm);
-	DDX_Check(pDX, IDC_CHECK_QC_PRV_VER, m_bCheckPrv);
-	DDX_Text(pDX, IDC_EDIT_QC_PRV, m_prv);
-	DDX_Check(pDX, IDC_CHECK_QC_MDT, m_bCheckMdt);
-	DDX_Text(pDX, IDC_EDIT_QC_MDT, m_mdt);
-	DDX_Check(pDX, IDC_CHECK_QC_ISP_VER, m_bCheckIsp);
-	DDX_Text(pDX, IDC_EDIT_QC_ISP_VER, m_isp);
-	DDX_Check(pDX, IDC_CHECK_QC_SRAM_TEST, m_bCheckSramTest);
-	DDX_Text(pDX, IDC_EDIT_QC_SRAM_PATH, m_sramTestPath);
+	DDX_HexArray(pDX, IDC_EDIT_QC_MID, pOption->qcPrm.mid, sizeof(pOption->qcPrm.mid));
+	DDX_HexArray(pDX, IDC_EDIT_QC_OID, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid));
+	//DDX_CharArray(pDX, IDC_EDIT_QC_MID, pOption->qcPrm.mid, sizeof(pOption->qcPrm.mid));
+	//DDX_CharArray(pDX, IDC_EDIT_QC_OID, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid));
+
+	DDX_Check(pDX, IDC_CHECK_QC_MNM, pOption->qcPrm.bCheckMnm);
+	DDX_CharArray(pDX, IDC_EDIT_QC_MNM, pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm));
+	DDX_Check(pDX, IDC_CHECK_QC_PRV_VER, pOption->qcPrm.bCheckPrv);
+	//DDX_HexArray(pDX, IDC_EDIT_QC_PRV, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv));
+	DDX_CharArray(pDX, IDC_EDIT_QC_PRV, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv));
+	DDX_Check(pDX, IDC_CHECK_QC_MDT, pOption->qcPrm.bCheckMdt);
+	DDX_CharArray(pDX, IDC_EDIT_QC_MDT, pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt));
+	DDX_Check(pDX, IDC_CHECK_QC_ISP_VER, pOption->qcPrm.bCheckIsp);
+	DDX_CharArray(pDX, IDC_EDIT_QC_ISP_VER, pOption->qcPrm.isp, sizeof(pOption->qcPrm.isp));
+	DDX_Check(pDX, IDC_CHECK_QC_SRAM_TEST, pOption->qcPrm.bCheckSramTest);
+	DDX_CharArray(pDX, IDC_EDIT_QC_SRAM_PATH, pOption->qcPrm.szSramTestPath, sizeof(pOption->qcPrm.szSramTestPath));
+
 }
 
 BOOL CDialogQcSetting::OnInitDialog()
 {
 	CDialogBase::OnInitDialog();
-
-	PUFS_OPTION pOption = GetUfsOption();
-	if (pOption)
-	{
-		m_bCheckDiskInfo = pOption->qcPrm.bCheckDiskInfo;
-		m_sectorCount = pOption->qcPrm.sectorCnt;
-		m_bCheckPnm = pOption->qcPrm.bCheckPnm;
-		m_pnm = pOption->qcPrm.pnm;
-		m_bCheckMidOid = pOption->qcPrm.bCheckMidOid;
-		m_bankIdx.Format(_T("%c"), pOption->qcPrm.bankIdx[0]);
-		m_mid.Format(_T("%c"), pOption->qcPrm.mid[0]);
-		m_oid = pOption->qcPrm.oid;
-		m_bCheckMnm = pOption->qcPrm.bCheckMnm;
-		m_mnm = pOption->qcPrm.mnm;
-		m_bCheckPrv = pOption->qcPrm.bCheckPrv;
-		m_prv = pOption->qcPrm.prv;
-		m_bCheckMdt = pOption->qcPrm.bCheckMdt;
-		m_mdt = pOption->qcPrm.mdt;
-		m_bCheckIsp = pOption->qcPrm.bCheckIsp;
-		m_isp = pOption->qcPrm.isp;
-		m_bCheckSramTest = pOption->qcPrm.bCheckSramTest;
-		m_sramTestPath = pOption->qcPrm.szSramTestPath;
-
-		UpdateData(FALSE);
-	}
-
 	UpdateControlStates();
 	return TRUE;
 }
@@ -116,36 +165,6 @@ void CDialogQcSetting::UpdateControlStates()
 	enableItem(IDC_BTN_QC_SRAM_PATH_SEL, enableSramTest);
 }
 
-void CDialogQcSetting::SaveDataToUfsOption()
-{
-	UpdateData(TRUE);
-
-	PUFS_OPTION pOption = GetUfsOption();
-	if (pOption)
-	{
-		pOption->qcPrm.bCheckDiskInfo = m_bCheckDiskInfo;
-		pOption->qcPrm.sectorCnt = m_sectorCount;
-		pOption->qcPrm.bCheckPnm = m_bCheckPnm;
-		MultiByteToWideChar(CP_ACP, 0, (LPCSTR)m_pnm, -1, pOption->qcPrm.pnm, sizeof(pOption->qcPrm.pnm) / sizeof(WCHAR));
-		pOption->qcPrm.bCheckMidOid = m_bCheckMidOid;
-		if (!m_bankIdx.IsEmpty())
-			pOption->qcPrm.bankIdx[0] = m_bankIdx[0];
-		if (!m_mid.IsEmpty())
-			pOption->qcPrm.mid[0] = m_mid[0];
-		MultiByteToWideChar(CP_ACP, 0, (LPCSTR)m_oid, -1, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid) / sizeof(WCHAR));
-		pOption->qcPrm.bCheckMnm = m_bCheckMnm;
-		MultiByteToWideChar(CP_ACP, 0, (LPCSTR)m_mnm, -1, pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm) / sizeof(WCHAR));
-		pOption->qcPrm.bCheckPrv = m_bCheckPrv;
-		MultiByteToWideChar(CP_ACP, 0, (LPCSTR)m_prv, -1, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv) / sizeof(WCHAR));
-		pOption->qcPrm.bCheckMdt = m_bCheckMdt;
-		MultiByteToWideChar(CP_ACP, 0, (LPCSTR)m_mdt, -1, pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt) / sizeof(WCHAR));
-		pOption->qcPrm.bCheckIsp = m_bCheckIsp;
-		strcpy_s(pOption->qcPrm.isp, sizeof(pOption->qcPrm.isp), (LPCSTR)m_isp);
-		pOption->qcPrm.bCheckSramTest = m_bCheckSramTest;
-		strcpy_s(pOption->qcPrm.szSramTestPath, sizeof(pOption->qcPrm.szSramTestPath), (LPCSTR)m_sramTestPath);
-	}
-}
-
 BEGIN_MESSAGE_MAP(CDialogQcSetting, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_QC_SRAM_PATH_SEL, &CDialogQcSetting::OnBnClickedBtnQcSramPathSel)
 	ON_BN_CLICKED(IDC_CHECK_QC_DISK_INFO, &CDialogQcSetting::OnBnClickedCheckQcDiskInfo)
@@ -177,9 +196,8 @@ void CDialogQcSetting::OnBnClickedBtnQcSramPathSel()
 
 	if (fileDlg.DoModal() == IDOK)
 	{
+		SetDlgItemText(IDC_EDIT_QC_SRAM_PATH, fileDlg.GetPathName());
 		UpdateData(TRUE);
-		m_sramTestPath = fileDlg.GetPathName();
-		UpdateData(FALSE);
 	}
 }
 

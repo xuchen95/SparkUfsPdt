@@ -38,8 +38,7 @@ protected:
 
 private:
 	void ShowPage(int index);
-	BOOL SaveToFile(const CString& path, bool saveMain, bool saveQc);
-	void SaveToOption(bool saveMain, bool saveQc);
+	BOOL SaveToFile(const CString& path, bool saveMain=true, bool saveQc=true);
 
 	CTabCtrl m_tabParamPage;
 	CDialogMainSetting m_mainSetting;
@@ -50,4 +49,7 @@ private:
 	bool m_showQc = true;
 	int m_tabPages[2] = { 0, 1 };
 	int m_tabPageCount = 0;
+
+public:
+    
 };

@@ -36,14 +36,6 @@ PST_UFS_BASE_SETTING CDialogBase::GetSharedBaseSetting()
     return &s_baseOption;
 }
 
-void CDialogBase::SetBaseSetting(PST_UFS_BASE_SETTING pOption)
-{
-    if (pOption)
-    {
-        m_pBaseOption = pOption;
-    }
-}
-
 PST_UFS_BASE_SETTING CDialogBase::GetBaseSetting() const
 {
     return m_pBaseOption;
@@ -91,41 +83,41 @@ void CDialogBase::LoadRemoteSnToMainParam()
     if (GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
         return;
 
-    WCHAR wbuffer[256] = {};
+    CHAR buffer[256] = {};
     int len = 0;
     
     // 读取 Meto
     ZeroMemory(s_sharedOption.mainPrm.meto, sizeof(s_sharedOption.mainPrm.meto));
-    len = GetPrivateProfileStringW(L"TEST", L"Meto", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    len = GetPrivateProfileString("TEST", "Meto", "", buffer, _countof(buffer), iniPath);
     if (len > 0)
     {
-        wcsncpy_s(s_sharedOption.mainPrm.meto, _countof(s_sharedOption.mainPrm.meto), wbuffer, _TRUNCATE);
+        UINT32 val;
+        val = strtoul(buffer,nullptr,16);
+        memcpy(s_sharedOption.mainPrm.meto,&val,sizeof(val));
     }
     
     // 读取 SerialNumber (PSN_Start)
-    ZeroMemory(wbuffer, sizeof(wbuffer));
-    ZeroMemory(s_sharedOption.mainPrm.psn_start, sizeof(s_sharedOption.mainPrm.psn_start));
-    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    ZeroMemory(buffer, sizeof(buffer));
+    len = GetPrivateProfileString("TEST", "SerialNumber", "", buffer, _countof(buffer), iniPath);
     if (len > 0)
     {
-        wcsncpy_s(s_sharedOption.mainPrm.psn_start, _countof(s_sharedOption.mainPrm.psn_start), wbuffer, _TRUNCATE);
+        s_sharedOption.mainPrm.psn_start = strtoul(buffer, nullptr, 16);
     }
     
     // 读取 SerialNumber_End (PSN_End)
-    ZeroMemory(wbuffer, sizeof(wbuffer));
-    ZeroMemory(s_sharedOption.mainPrm.psn_end, sizeof(s_sharedOption.mainPrm.psn_end));
-    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber_End", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    ZeroMemory(buffer, sizeof(buffer));
+    len = GetPrivateProfileString("TEST", "SerialNumber_End", "", buffer, _countof(buffer), iniPath);
     if (len > 0)
     {
-        wcsncpy_s(s_sharedOption.mainPrm.psn_end, _countof(s_sharedOption.mainPrm.psn_end), wbuffer, _TRUNCATE);
+        s_sharedOption.mainPrm.psn_end = strtoul(buffer, nullptr, 16);
     }
     
     // 读取 SerialNumber_Mask
-    ZeroMemory(wbuffer, sizeof(wbuffer));
+    ZeroMemory(buffer, sizeof(buffer));
     ZeroMemory(s_sharedOption.mainPrm.psn_mask, sizeof(s_sharedOption.mainPrm.psn_mask));
-    len = GetPrivateProfileStringW(L"TEST", L"SerialNumber_Mask", L"", wbuffer, _countof(wbuffer), CT2W(iniPath));
+    len = GetPrivateProfileString("TEST", "SerialNumber_Mask", "", buffer, _countof(buffer), iniPath);
     if (len > 0)
     {
-        wcsncpy_s(s_sharedOption.mainPrm.psn_mask, _countof(s_sharedOption.mainPrm.psn_mask), wbuffer, _TRUNCATE);
+        memcpy(s_sharedOption.mainPrm.psn_mask, buffer,sizeof(s_sharedOption.mainPrm.psn_mask));
     }
 }

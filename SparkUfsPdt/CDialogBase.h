@@ -3,48 +3,48 @@
 
 typedef struct main_param
 {
-	char szFlowName[32];
-	int funcSel;
+	CHAR szFlowName[32];
+	INT funcSel;
 	BOOL bDLTesterFW;
-	char strTesterFwPath[1024];
+	CHAR strTesterFwPath[1024];
 	BOOL bDLISP;
-	char strIspPath[1024];
+	CHAR strIspPath[1024];
 	BOOL bDLCID;
 	//CID
-	char bankIdx[1];
-	CHAR mid[1];
-	WCHAR oid[31];
-	WCHAR pnm[16];
-	WCHAR psn_start[32];
-	WCHAR psn_end[32];
-	WCHAR psn_mask[32];
-	WCHAR mdt[8];
-	WCHAR prv[4];
-	WCHAR mnm[16];
-	WCHAR meto[32];
+	UINT bankIdx;
+	CHAR mid[2];
+	CHAR oid[31];
+	CHAR pnm[16];
+	UINT32 psn_start;
+	UINT32 psn_end;
+	CHAR psn_mask[31];
+	CHAR mdt[4];
+	CHAR prv[4];
+	CHAR mnm[8];
+	CHAR meto[4];
 
 }MAIN_PARAM, * PMAIN_PARAM;
 
 typedef struct qc_param
 { 
 	BOOL bCheckDiskInfo;
-	ULONG sectorCnt;
+	ULONG n4KBCnt;
 	BOOL bCheckPnm;
-	WCHAR pnm[16];
+	CHAR pnm[16];
 	BOOL bCheckMidOid;
-	char bankIdx[1];
-	char mid[1];
-	WCHAR oid[31];
+	UINT bankIdx;
+	CHAR mid[2];
+	CHAR oid[31];
 	BOOL bCheckMnm;
-	WCHAR mnm[16];
+	CHAR mnm[8];
 	BOOL bCheckPrv;
-	WCHAR prv[4];
+	CHAR prv[4];
 	BOOL bCheckMdt;
-	WCHAR mdt[8];
+	CHAR mdt[4];
 	BOOL bCheckIsp;
-	char isp[32];
+	CHAR isp[32];
 	BOOL bCheckSramTest;
-	char szSramTestPath[1024];
+	CHAR szSramTestPath[1024];
 
 }QC_PARAM,*PQC_PARAM;
 
@@ -75,7 +75,6 @@ public:
 	PUFS_OPTION GetUfsOption() const;
 
 	static PST_UFS_BASE_SETTING GetSharedBaseSetting();
-	void SetBaseSetting(PST_UFS_BASE_SETTING pOption);
 	PST_UFS_BASE_SETTING GetBaseSetting() const;
 	static void LoadBaseSettingFromIni(const CString& path);
 	static void LoadRemoteSnToMainParam();

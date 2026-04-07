@@ -11,7 +11,6 @@ class CDialogMainSetting : public CDialogBase
 public:
 	CDialogMainSetting(CWnd* pParent = nullptr);   // 标准构造函数
 	virtual ~CDialogMainSetting();
-	void SaveDataToUfsOption();
 
 // 对话框数据
 #ifdef AFX_DESIGN_TIME
@@ -19,6 +18,9 @@ public:
 #endif
 
 protected:
+	void DDX_CharArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize);
+	void DDX_HexArray(CDataExchange* pDX, int nIDC, char* szArray, int nArraySize);
+	void DDX_SN(CDataExchange* pDX, int nIDC, UINT32& nSn);
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 	virtual BOOL OnInitDialog();
 
@@ -33,28 +35,4 @@ protected:
 private:
 	void UpdateControlStates();
 
-	// TesterFW 控制
-	BOOL m_bDLTesterFW = FALSE;
-	CString m_strTesterFwPath;
-	
-	// ISP 控制
-	BOOL m_bDLISP = FALSE;
-	CString m_strIspPath;
-	
-	// CID 控制
-	BOOL m_bDLCID = FALSE;
-	int m_funcSel = 0;
-	CString m_bankIdx;
-	CString m_mid;
-	CString m_oid;
-	CString m_pnm;
-	CString m_psn_start;
-	CString m_psn_end;
-	CString m_psn_mask;
-	CString m_mdt;
-	CString m_prv;
-	CString m_mnm;
-	CString m_meto;
-public:
-	afx_msg void OnEnChangeEditSnMdt();
 };

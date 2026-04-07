@@ -671,7 +671,7 @@ void CSparkUfsPdtDlg::UpdatePdtNameText()
 		if (upperPath.Find(_T("FT1")) >= 0)
 			label = _T("FT1");
 		else if (upperPath.Find(_T("FT2")) >= 0)
-			label = _T("FT2");
+			label = _T("FT2");      
 		else if (upperPath.Find(_T("FT3")) >= 0)
 			label = _T("FT3");
 		else if (upperPath.Find(_T("QC")) >= 0)

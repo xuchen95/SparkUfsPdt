@@ -5,6 +5,7 @@
 #include "SparkUfsPdt.h"
 #include "afxdialogex.h"
 #include "CDialogSetting.h"
+#include "PubFunc.h"
 
 
 // CDialogSetting 对话框
@@ -37,156 +38,191 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	}
 
 	CStringA pathA(path);
+
 	auto readInt = [&](LPCSTR section, LPCSTR key, int defValue)
 	{
 		return GetPrivateProfileIntA(section, key, defValue, pathA);
 	};
-	auto readString = [&](LPCSTR section, LPCSTR key, char* buffer, DWORD size)
+
+	auto readString = [&](LPCSTR section, LPCSTR key, char* buffer, DWORD size) -> DWORD
 	{
+		if (buffer == nullptr || size == 0)
+		{
+			return 0;
+		}
+
+		buffer[0] = '\0';
 		return GetPrivateProfileStringA(section, key, "", buffer, size, pathA);
 	};
 
-	char buffer[256] = {};
+	auto readUInt = [&](LPCSTR section, LPCSTR key, UINT defValue)
+	{
+		char numberBuffer[64] = {};
+		readString(section, key, numberBuffer, static_cast<DWORD>(sizeof(numberBuffer)));
+		if (numberBuffer[0] == '\0')
+		{
+			return defValue;
+		}
+
+		return static_cast<UINT>(strtoul(numberBuffer, nullptr, 0));
+	};
+
+	auto readUInt32 = [&](LPCSTR section, LPCSTR key, UINT32 defValue)
+	{
+		char numberBuffer[64] = {};
+		readString(section, key, numberBuffer, static_cast<DWORD>(sizeof(numberBuffer)));
+		if (numberBuffer[0] == '\0')
+		{
+			return defValue;
+		}
+
+		return static_cast<UINT32>(strtoull(numberBuffer, nullptr, 16));
+	};
+
+	char buffer[1024] = {};
 
 	pOption->mainPrm.funcSel = readInt("Main", "FuncSel", pOption->mainPrm.funcSel);
 	pOption->mainPrm.bDLTesterFW = readInt("Main", "bDLTesterFW", pOption->mainPrm.bDLTesterFW);
-	readString("Main", "strTesterFwPath", buffer, sizeof(buffer));
-	if (buffer[0])
+	readString("Main", "strTesterFwPath", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
 		strcpy_s(pOption->mainPrm.strTesterFwPath, sizeof(pOption->mainPrm.strTesterFwPath), buffer);
-	pOption->mainPrm.bDLISP = readInt("Main", "bDLISP", pOption->mainPrm.bDLISP);
-	readString("Main", "strIspPath", buffer, sizeof(buffer));
-	if (buffer[0])
-		strcpy_s(pOption->mainPrm.strIspPath, sizeof(pOption->mainPrm.strIspPath), buffer);
-	pOption->mainPrm.bDLCID = readInt("Main", "bDLCID", pOption->mainPrm.bDLCID);
-	readString("Main", "bankIdx", buffer, sizeof(buffer));
-	if (buffer[0])
-		pOption->mainPrm.bankIdx[0] = buffer[0];
-	readString("Main", "mid", buffer, sizeof(buffer));
-	if (buffer[0])
-		pOption->mainPrm.mid[0] = buffer[0];
-	
-	readString("Main", "oid", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.oid, sizeof(pOption->mainPrm.oid) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.oid[0] = L'\0';
 	}
-	
-	readString("Main", "pnm", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.pnm[0] = L'\0';
-	}
-	
-	readString("Main", "psn_start", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_start, sizeof(pOption->mainPrm.psn_start) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.psn_start[0] = L'\0';
-	}
-	
-	readString("Main", "psn_end", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.psn_end, sizeof(pOption->mainPrm.psn_end) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.psn_end[0] = L'\0';
-	}
-	
-	readString("Main", "mdt", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.mdt[0] = L'\0';
-	}
-	
-	readString("Main", "prv", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.prv[0] = L'\0';
-	}
-	
-	readString("Main", "mnm", buffer, sizeof(buffer));
-	if (buffer[0])
-	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->mainPrm.mnm[0] = L'\0';
-	}
-	
-	readString("Main", "szFlowName", buffer, sizeof(buffer));
-	if (buffer[0])
-		strcpy_s(pOption->mainPrm.szFlowName, sizeof(pOption->mainPrm.szFlowName), buffer);
 
+	pOption->mainPrm.bDLISP = readInt("Main", "bDLISP", pOption->mainPrm.bDLISP);
+	readString("Main", "strIspPath", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		strcpy_s(pOption->mainPrm.strIspPath, sizeof(pOption->mainPrm.strIspPath), buffer);
+	}
+
+	pOption->mainPrm.bDLCID = readInt("Main", "bDLCID", pOption->mainPrm.bDLCID);
+	pOption->mainPrm.bankIdx = readUInt("Main", "bankIdx", pOption->mainPrm.bankIdx);
+
+	readString("Main", "mid", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->mainPrm.mid), sizeof(pOption->mainPrm.mid));
+	}
+
+	readString("Main", "oid", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->mainPrm.oid), sizeof(pOption->mainPrm.oid));
+	}
+
+	readString("Main", "pnm", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		strcpy_s(pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm), buffer);
+	}
+
+	pOption->mainPrm.psn_start = readUInt32("Main", "psn_start", pOption->mainPrm.psn_start);
+	pOption->mainPrm.psn_end = readUInt32("Main", "psn_end", pOption->mainPrm.psn_end);
+
+	readString("Main", "psn_mask", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		strcpy_s(pOption->mainPrm.psn_mask, sizeof(pOption->mainPrm.psn_mask), buffer);
+	}
+
+	readString("Main", "mdt", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		memcpy(pOption->mainPrm.mdt, buffer, sizeof(pOption->mainPrm.mdt));
+	}
+
+	readString("Main", "prv", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		//HexStringToByteArray(buffer, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv));
+		memcpy(pOption->mainPrm.prv, buffer, sizeof(pOption->mainPrm.prv));
+	}
+
+	readString("Main", "mnm", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		memcpy(pOption->mainPrm.mnm, buffer, sizeof(pOption->mainPrm.mnm));
+	}
+
+	readString("Main", "meto", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->mainPrm.meto), sizeof(pOption->mainPrm.meto));
+	}
+
+	readString("Main", "szFlowName", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		strcpy_s(pOption->mainPrm.szFlowName, sizeof(pOption->mainPrm.szFlowName), buffer);
+	}
+
+	// QC Section
 	pOption->qcPrm.bCheckDiskInfo = readInt("QC", "bCheckDiskInfo", pOption->qcPrm.bCheckDiskInfo);
-	pOption->qcPrm.sectorCnt = static_cast<ULONG>(readInt("QC", "sectorCnt", static_cast<int>(pOption->qcPrm.sectorCnt)));
+	pOption->qcPrm.n4KBCnt = static_cast<ULONG>(readUInt("QC", "4KB_CNT", static_cast<UINT>(pOption->qcPrm.n4KBCnt)));
 	pOption->qcPrm.bCheckPnm = readInt("QC", "bCheckPnm", pOption->qcPrm.bCheckPnm);
-	readString("QC", "pnm", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "pnm", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
 	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.pnm, sizeof(pOption->qcPrm.pnm) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->qcPrm.pnm[0] = L'\0';
+		strcpy_s(pOption->qcPrm.pnm, sizeof(pOption->qcPrm.pnm), buffer);
 	}
-	
+
 	pOption->qcPrm.bCheckMidOid = readInt("QC", "bCheckMidOid", pOption->qcPrm.bCheckMidOid);
-	readString("QC", "bankIdx", buffer, sizeof(buffer));
-	if (buffer[0])
-		pOption->qcPrm.bankIdx[0] = buffer[0];
-	readString("QC", "mid", buffer, sizeof(buffer));
-	if (buffer[0])
-		pOption->qcPrm.mid[0] = buffer[0];
-	
-	readString("QC", "oid", buffer, sizeof(buffer));
-	if (buffer[0])
+	pOption->qcPrm.bankIdx = readUInt("QC", "bankIdx", pOption->qcPrm.bankIdx);
+
+	readString("QC", "mid", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
 	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.oid, sizeof(pOption->qcPrm.oid) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->qcPrm.oid[0] = L'\0';
+		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->qcPrm.mid), sizeof(pOption->qcPrm.mid));
 	}
-	
+
+	readString("QC", "oid", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
+		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->qcPrm.oid), sizeof(pOption->qcPrm.oid));
+	}
+
 	pOption->qcPrm.bCheckMnm = readInt("QC", "bCheckMnm", pOption->qcPrm.bCheckMnm);
-	readString("QC", "mnm", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "mnm", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
 	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->qcPrm.mnm[0] = L'\0';
+		memcpy(pOption->qcPrm.mnm, buffer, sizeof(pOption->qcPrm.mnm));
 	}
-	
+
 	pOption->qcPrm.bCheckPrv = readInt("QC", "bCheckPrv", pOption->qcPrm.bCheckPrv);
-	readString("QC", "prv", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "prv", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
 	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->qcPrm.prv[0] = L'\0';
+		//HexStringToByteArray(buffer, pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv));  // ✓ 修正：写入 qcPrm.prv
+		memcpy(pOption->qcPrm.prv, buffer, sizeof(pOption->qcPrm.prv));
 	}
-	
+
 	pOption->qcPrm.bCheckMdt = readInt("QC", "bCheckMdt", pOption->qcPrm.bCheckMdt);
-	readString("QC", "mdt", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "mdt", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
 	{
-		int result = MultiByteToWideChar(CP_ACP, 0, buffer, -1, pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt) / sizeof(WCHAR));
-		if (result == 0)
-			pOption->qcPrm.mdt[0] = L'\0';
+		memcpy(pOption->qcPrm.mdt, buffer, sizeof(pOption->qcPrm.mdt));
 	}
-	
+
 	pOption->qcPrm.bCheckIsp = readInt("QC", "bCheckIsp", pOption->qcPrm.bCheckIsp);
-	readString("QC", "isp", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "isp", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
 		strcpy_s(pOption->qcPrm.isp, sizeof(pOption->qcPrm.isp), buffer);
+	}
+
 	pOption->qcPrm.bCheckSramTest = readInt("QC", "bCheckSramTest", pOption->qcPrm.bCheckSramTest);
-	readString("QC", "szSramTestPath", buffer, sizeof(buffer));
-	if (buffer[0])
+
+	readString("QC", "szSramTestPath", buffer, static_cast<DWORD>(sizeof(buffer)));
+	if (buffer[0] != '\0')
+	{
 		strcpy_s(pOption->qcPrm.szSramTestPath, sizeof(pOption->qcPrm.szSramTestPath), buffer);
+	}
 
 	return TRUE;
 }
@@ -262,27 +298,13 @@ void CDialogSetting::ShowPage(int index)
 	m_currentPage = pageId;
 }
 
-void CDialogSetting::SaveToOption(bool saveMain, bool saveQc)
-{
-	if (saveMain)
-	{
-		m_mainSetting.SaveDataToUfsOption();
-	}
-	if (saveQc)
-	{
-		m_qcSetting.SaveDataToUfsOption();
-	}
-}
-
-BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
+BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain/*=true*/, bool saveQc/*=true*/)
 {
 	if (path.IsEmpty())
 	{
 		MessageBox(_T("Invalid file path."), _T("Error"), MB_ICONERROR);
 		return FALSE;
 	}
-
-	SaveToOption(saveMain, saveQc);
 
 	PUFS_OPTION pOption = GetUfsOption();
 	if (!pOption)
@@ -305,29 +327,57 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
 	};
 
 	CString value;
+
 	if (saveMain)
 	{
 		value.Format(_T("%d"), pOption->mainPrm.funcSel);
 		if (!writeValue(_T("Main"), _T("FuncSel"), value)) return FALSE;
+
 		value.Format(_T("%d"), pOption->mainPrm.bDLTesterFW);
 		if (!writeValue(_T("Main"), _T("bDLTesterFW"), value)) return FALSE;
+
 		if (!writeValue(_T("Main"), _T("strTesterFwPath"), CString(pOption->mainPrm.strTesterFwPath))) return FALSE;
+
 		value.Format(_T("%d"), pOption->mainPrm.bDLISP);
 		if (!writeValue(_T("Main"), _T("bDLISP"), value)) return FALSE;
+
 		if (!writeValue(_T("Main"), _T("strIspPath"), CString(pOption->mainPrm.strIspPath))) return FALSE;
+
 		value.Format(_T("%d"), pOption->mainPrm.bDLCID);
 		if (!writeValue(_T("Main"), _T("bDLCID"), value)) return FALSE;
-		value.Format(_T("%c"), pOption->mainPrm.bankIdx[0]);
+
+		value.Format(_T("%u"), pOption->mainPrm.bankIdx);
 		if (!writeValue(_T("Main"), _T("bankIdx"), value)) return FALSE;
-		value.Format(_T("%c"), pOption->mainPrm.mid[0]);
-		if (!writeValue(_T("Main"), _T("mid"), value)) return FALSE;
-		if (!writeValue(_T("Main"), _T("oid"), CString(pOption->mainPrm.oid))) return FALSE;
+
+		// mid - 转换为十六进制字符串
+		if (!writeValue(_T("Main"), _T("mid"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->mainPrm.mid), sizeof(pOption->mainPrm.mid)))) return FALSE;
+		
+		// oid - 转换为十六进制字符串
+		if (!writeValue(_T("Main"), _T("oid"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->mainPrm.oid), sizeof(pOption->mainPrm.oid)))) return FALSE;
+		
+		// pnm - 字符串，保持原样
 		if (!writeValue(_T("Main"), _T("pnm"), CString(pOption->mainPrm.pnm))) return FALSE;
-		if (!writeValue(_T("Main"), _T("psn_start"), CString(pOption->mainPrm.psn_start))) return FALSE;
-		if (!writeValue(_T("Main"), _T("psn_end"), CString(pOption->mainPrm.psn_end))) return FALSE;
-		if (!writeValue(_T("Main"), _T("mdt"), CString(pOption->mainPrm.mdt))) return FALSE;
-		if (!writeValue(_T("Main"), _T("prv"), CString(pOption->mainPrm.prv))) return FALSE;
-		if (!writeValue(_T("Main"), _T("mnm"), CString(pOption->mainPrm.mnm))) return FALSE;
+
+		value.Format(_T("%08X"), pOption->mainPrm.psn_start);
+		if (!writeValue(_T("Main"), _T("psn_start"), value)) return FALSE;
+
+		value.Format(_T("%08X"), pOption->mainPrm.psn_end);
+		if (!writeValue(_T("Main"), _T("psn_end"), value)) return FALSE;
+
+		if (!writeValue(_T("Main"), _T("psn_mask"), CString(pOption->mainPrm.psn_mask))) return FALSE;
+		
+		// mdt - 二进制数据，按原样保存
+		if (!writeValue(_T("Main"), _T("mdt"), CString(pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt)))) return FALSE;
+		
+		// prv - 二进制数据，按原样保存
+		if (!writeValue(_T("Main"), _T("prv"), CString(pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv)))) return FALSE;
+		
+		// mnm - 二进制数据，按原样保存
+		if (!writeValue(_T("Main"), _T("mnm"), CString(pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm)))) return FALSE;
+		
+		// meto - 转换为十六进制字符串
+		if (!writeValue(_T("Main"), _T("meto"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->mainPrm.meto), sizeof(pOption->mainPrm.meto)))) return FALSE;
+		
 		if (!writeValue(_T("Main"), _T("szFlowName"), CString(pOption->mainPrm.szFlowName))) return FALSE;
 	}
 
@@ -335,32 +385,53 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain, bool saveQc)
 	{
 		value.Format(_T("%d"), pOption->qcPrm.bCheckDiskInfo);
 		if (!writeValue(_T("QC"), _T("bCheckDiskInfo"), value)) return FALSE;
-		value.Format(_T("%lu"), pOption->qcPrm.sectorCnt);
-		if (!writeValue(_T("QC"), _T("sectorCnt"), value)) return FALSE;
+
+		value.Format(_T("%lu"), pOption->qcPrm.n4KBCnt);
+		if (!writeValue(_T("QC"), _T("4KB_CNT"), value)) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckPnm);
 		if (!writeValue(_T("QC"), _T("bCheckPnm"), value)) return FALSE;
+
 		if (!writeValue(_T("QC"), _T("pnm"), CString(pOption->qcPrm.pnm))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckMidOid);
 		if (!writeValue(_T("QC"), _T("bCheckMidOid"), value)) return FALSE;
-		value.Format(_T("%c"), pOption->qcPrm.bankIdx[0]);
+
+		value.Format(_T("%u"), pOption->qcPrm.bankIdx);
 		if (!writeValue(_T("QC"), _T("bankIdx"), value)) return FALSE;
-		value.Format(_T("%c"), pOption->qcPrm.mid[0]);
-		if (!writeValue(_T("QC"), _T("mid"), value)) return FALSE;
-		if (!writeValue(_T("QC"), _T("oid"), CString(pOption->qcPrm.oid))) return FALSE;
+
+		// mid - 转换为十六进制字符串
+		if (!writeValue(_T("QC"), _T("mid"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->qcPrm.mid), sizeof(pOption->qcPrm.mid)))) return FALSE;
+		
+		// oid - 转换为十六进制字符串
+		if (!writeValue(_T("QC"), _T("oid"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->qcPrm.oid), sizeof(pOption->qcPrm.oid)))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckMnm);
 		if (!writeValue(_T("QC"), _T("bCheckMnm"), value)) return FALSE;
-		if (!writeValue(_T("QC"), _T("mnm"), CString(pOption->qcPrm.mnm))) return FALSE;
+
+		// mnm - 二进制数据
+		if (!writeValue(_T("QC"), _T("mnm"), CString(pOption->qcPrm.mnm, sizeof(pOption->qcPrm.mnm)))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckPrv);
 		if (!writeValue(_T("QC"), _T("bCheckPrv"), value)) return FALSE;
-		if (!writeValue(_T("QC"), _T("prv"), CString(pOption->qcPrm.prv))) return FALSE;
+
+		// prv - 转换为十六进制字符串
+		if (!writeValue(_T("QC"), _T("prv"), CString(pOption->qcPrm.prv, sizeof(pOption->qcPrm.prv)))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckMdt);
 		if (!writeValue(_T("QC"), _T("bCheckMdt"), value)) return FALSE;
-		if (!writeValue(_T("QC"), _T("mdt"), CString(pOption->qcPrm.mdt))) return FALSE;
+
+		// mdt - 二进制数据
+		if (!writeValue(_T("QC"), _T("mdt"), CString(pOption->qcPrm.mdt, sizeof(pOption->qcPrm.mdt)))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckIsp);
 		if (!writeValue(_T("QC"), _T("bCheckIsp"), value)) return FALSE;
+
 		if (!writeValue(_T("QC"), _T("isp"), CString(pOption->qcPrm.isp))) return FALSE;
+
 		value.Format(_T("%d"), pOption->qcPrm.bCheckSramTest);
 		if (!writeValue(_T("QC"), _T("bCheckSramTest"), value)) return FALSE;
+
 		if (!writeValue(_T("QC"), _T("szSramTestPath"), CString(pOption->qcPrm.szSramTestPath))) return FALSE;
 	}
 
@@ -385,7 +456,7 @@ void CDialogSetting::OnBnClickedBtnSettingSaveAs()
 	if (dlg.DoModal() == IDOK)
 	{
 		m_lastSavePath = dlg.GetPathName();
-		if (SaveToFile(m_lastSavePath, true, true))
+		if (SaveToFile(m_lastSavePath))
 		{
 			MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 			EndDialog(IDOK);
@@ -406,7 +477,7 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 		return;
 	}
 
-	if (SaveToFile(m_lastSavePath, true, true))
+	if (SaveToFile(m_lastSavePath))
 	{
 		MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 		EndDialog(IDOK);
@@ -415,7 +486,7 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 
 void CDialogSetting::OnBnClickedBtnSettingOk()
 {
-	SaveToOption(true, true);
+	UpdateData(TRUE);
 	EndDialog(IDOK);
 }
 
