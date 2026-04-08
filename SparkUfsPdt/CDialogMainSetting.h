@@ -23,7 +23,6 @@ protected:
 	void DDX_SN(CDataExchange* pDX, int nIDC, UINT32& nSn);
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 	virtual BOOL OnInitDialog();
-
 	afx_msg void OnBnClickedBtnTesterfwPathSel();
 	afx_msg void OnBnClickedBtnIspPathSel();
 	afx_msg void OnBnClickedCheckDlTesterfw();

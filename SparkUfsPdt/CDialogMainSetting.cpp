@@ -38,13 +38,11 @@ void CDialogMainSetting::DDX_CharArray(CDataExchange* pDX, int nIDC, char* szArr
 	{
 		// 方向1：控件 → CHAR数组（保存数据）
 		int nLen = ::GetWindowTextLengthA(hWndCtrl);
-		// 防止越界：预留结束符位置
-		if (nLen >= nArraySize)
-			nLen = nArraySize - 1;
+
 		// 获取文本并填充到数组
-		::GetWindowText(hWndCtrl, szArray, nArraySize);
-		// 确保强制结束符（防止脏数据）
-		szArray[nLen] = '\0';
+		CString str('1',nLen+1);
+		::GetWindowTextA(hWndCtrl, str.GetBuffer(), nLen+1);
+		memcpy(szArray, str.GetBuffer(), nArraySize);
 	}
 	else
 	{

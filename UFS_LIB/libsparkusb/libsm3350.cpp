@@ -657,6 +657,20 @@ int CSm3350Vcmds::UfsWriteSramMp(PCHAR pData, UINT nSectorCnt)
     return nRet;
 }
 
+int CSm3350Vcmds::UfsReadCid(PCHAR pData, int SectCnt)
+{
+    int nRet;
+    do
+    {
+        ZeroMemory(&m_Cdb, sizeof(m_Cdb));
+        m_Cdb.ufs1.u16OpCode = _byteswap_ushort(CMD_READ_CID);
+        m_Cdb.ufs1.uLen = SectCnt;
+        if ((nRet = m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, SectCnt, m_Cdb)) != ERROR_SUCCESS) break;
+    } while (0);
+
+    return nRet;
+}
+
 
 int CSm3350Vcmds::ScsiCmdDataIn(PCHAR dataBuffer)
 {

@@ -26,6 +26,8 @@ public:
     static int VerifySram1Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
 
+    static int VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
+
     static void SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData);
     static void SetMdtData(CSparkUfsPdtDlg* pDlg, char* pData);
     static void GetIspString(CSparkUfsPdtDlg* pDlg, char* isp);

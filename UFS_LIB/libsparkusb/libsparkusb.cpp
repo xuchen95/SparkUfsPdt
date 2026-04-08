@@ -698,3 +698,14 @@ int spark::sm3350::CSparkSm3350Util::UfsReadSramResult(PCHAR pData, UINT nSector
     return ERROR_SUCCESS;
 }
 
+int spark::sm3350::CSparkSm3350Util::UfsReadCidInfo(PCHAR pData, UINT nSectorCnt)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadCid(pData, nSectorCnt))) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+

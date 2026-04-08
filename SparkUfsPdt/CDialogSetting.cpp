@@ -456,6 +456,8 @@ void CDialogSetting::OnBnClickedBtnSettingSaveAs()
 	if (dlg.DoModal() == IDOK)
 	{
 		m_lastSavePath = dlg.GetPathName();
+		m_mainSetting.UpdateData(TRUE);
+		m_qcSetting.UpdateData(TRUE);
 		if (SaveToFile(m_lastSavePath))
 		{
 			MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
@@ -477,9 +479,12 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 		return;
 	}
 
+	m_mainSetting.UpdateData(TRUE);
+	m_qcSetting.UpdateData(TRUE);
 	if (SaveToFile(m_lastSavePath))
 	{
 		MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
+
 		EndDialog(IDOK);
 	}
 }

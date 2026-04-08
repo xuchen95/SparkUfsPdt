@@ -43,6 +43,8 @@
 #define CMD_VCMD_WRITE 0xD1E6
 #define CMD_VCMD_READ 0xD1E7
 
+#define CMD_READ_CID 0xD501
+
 #define SECTOR2BYTE(x)              ((x) << 9)
 #define BYTE2SECTOR(x)              ((x + 511) >> 9)
 
@@ -107,6 +109,7 @@ public:
     int UfsVcmdRead(PCHAR pData, UCHAR flag);
 
     int UfsWriteSramMp(PCHAR pData, UINT nSectorCnt);
+    int UfsReadCid(PCHAR pData, int SectCnt);
 protected:
     int ScsiCmdDataIn(PCHAR dataBuffer);
     int ScsiCmdDataOut(PCHAR dataBuffer);

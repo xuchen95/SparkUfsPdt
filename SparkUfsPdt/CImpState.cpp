@@ -371,7 +371,7 @@ int CImpState::VerifyIspStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
 
         if (memcmp(ispString, pData, 8))
         {
-            ret = 0xF18;
+            ret = ERR_ISP_VER_MISMATCH;
         }
     } while (0);
     if (ret != ERROR_SUCCESS)
@@ -423,7 +423,7 @@ int CImpState::VerifySram1Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
 
         if (!(pData[0] == 0x00 && pData[1] == 0x00 && pData[2] == 0x00 && pData[3] == 0x00))
         {
-            ret = 0xF21;
+            ret = ERR_SRAM1_TEST_FAILED;
         }
     } while (0);
     if (ret != ERROR_SUCCESS)
@@ -453,7 +453,7 @@ int CImpState::VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
 
         if (!(pData2[0] == 0x00 && pData2[1] == 0x00 && pData2[2] == 0x00 && pData2[3] == 0x00))
         {
-            ret = 0xF22;
+            ret = ERR_SRAM2_TEST_FAILED;
         }
     } while (0);
     if (ret != ERROR_SUCCESS)
@@ -463,6 +463,258 @@ int CImpState::VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
+    }
+    return ret;
+}
+//
+//int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+//{
+//    int ret = ERROR_SUCCESS;
+//    char pData[512 * 0x03] = { 0 };
+//
+//#define MNM_DATA_OFFSET 0x02
+//#define CAP_DATA_OFFSET (16 * 16 + 13)
+//#define MID_DATA_OFFSET (16 * 20 + 4)
+//#define PNM_DATA_OFFSET (16 * 44 + 6)
+//#define PSN_DATA_OFFSET (16 * 76 + 2)
+//
+//    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyCid") };
+//    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+//
+//    if (pDlg == nullptr || pDlg->GetUfsOption() == nullptr)
+//    {
+//        ret = ERROR_INVALID_PARAMETER;
+//    }
+//    else
+//    {
+//        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+//        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+//
+//        do
+//        {
+//            if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+//
+//            // MNM: 固定字段长度比较（WCHAR）
+//            const SIZE_T mnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.mnm);
+//            WCHAR mnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.mnm)] = { 0 };
+//            const size_t mnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.mnm, sizeof(pDlg->GetUfsOption()->qcPrm.mnm));
+//            if (mnmSrcLen > 0)
+//            {
+//                if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.mnm, mnmSrcLen, mnmExpected, mnmFieldChars))
+//                {
+//                    ret = ERR_MNM_MISMATCH;
+//                    break;
+//                }
+//            }
+//            if (0 != memcmp(mnmExpected, pData + MNM_DATA_OFFSET, mnmFieldChars * sizeof(WCHAR)))
+//            {
+//                ret = ERR_MNM_MISMATCH;
+//                break;
+//            }
+//
+//            // 4KB Count: 避免未对齐访问
+//            ULONG capRaw = 0;
+//            memcpy(&capRaw, pData + CAP_DATA_OFFSET, sizeof(capRaw));
+//            const ULONG n4KBCntD = pDlg->GetUfsOption()->qcPrm.n4KBCnt;
+//            const ULONG n4KBCntS = _byteswap_ulong(capRaw);
+//            if (n4KBCntD != n4KBCntS)
+//            {
+//                ret = ERR_4KBCNT_MISMATCH;
+//                break;
+//            }
+//
+//            // MID: 固定长度字节比较
+//            const SIZE_T midLen = sizeof(pDlg->GetUfsOption()->qcPrm.mid);
+//            if (0 != memcmp(pDlg->GetUfsOption()->qcPrm.mid, pData + MID_DATA_OFFSET, midLen))
+//            {
+//                ret = ERR_MID_MISMATCH;
+//                break;
+//            }
+//
+//            // PNM: 按字符串实际长度比较（WCHAR）
+//            const SIZE_T pnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.pnm);
+//            WCHAR pnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.pnm)] = { 0 };
+//            const size_t pnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.pnm, sizeof(pDlg->GetUfsOption()->qcPrm.pnm));
+//            if (pnmSrcLen == 0)
+//            {
+//                ret = ERR_PNM_MISMATCH;
+//                break;
+//            }
+//            if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.pnm, pnmSrcLen, pnmExpected, pnmFieldChars))
+//            {
+//                ret = ERR_PNM_MISMATCH;
+//                break;
+//            }
+//            if (0 != memcmp(pnmExpected, pData + PNM_DATA_OFFSET, pnmSrcLen * sizeof(WCHAR)))
+//            {
+//                ret = ERR_PNM_MISMATCH;
+//                break;
+//            }
+//
+//            CString strsn;
+//            for (int i = PSN_DATA_OFFSET; i < PSN_DATA_OFFSET + 24; ++i)
+//            {
+//                strsn.AppendChar(pData[i]);
+//            }
+//            strsn.AppendChar('\0');
+//
+//        } while (0);
+//    }
+//
+//    if (ret != ERROR_SUCCESS)
+//    {
+//        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyCid Failed") };
+//        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+//        lg.error_code = ret;
+//        ZeroMemory(lg.state, sizeof(lg.state));
+//        strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
+//    }
+//    return ret;
+//}
+//
+
+int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char pData[512 * 0x03] = { 0 };
+    CStringW strSn;
+#define MNM_DATA_OFFSET 0x02
+#define CAP_DATA_OFFSET (16 * 16 + 13)
+#define MID_DATA_OFFSET (16 * 20 + 4)
+#define PNM_DATA_OFFSET (16 * 44 + 6)
+#define PSN_DATA_OFFSET (16 * 76 + 2)
+
+    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyCid") };
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+
+    if (pDlg == nullptr || pDlg->GetUfsOption() == nullptr)
+    {
+        ret = ERROR_INVALID_PARAMETER;
+    }
+    else
+    {
+        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+
+        do
+        {
+            if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+
+            //---------------------------------------------------------------------
+            // MNM: 修复大端 WCHAR 比较
+            //---------------------------------------------------------------------
+            const SIZE_T mnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.mnm);
+            WCHAR mnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.mnm)] = { 0 };
+            const size_t mnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.mnm, sizeof(pDlg->GetUfsOption()->qcPrm.mnm));
+            if (mnmSrcLen > 0)
+            {
+                if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.mnm, (int)mnmSrcLen, mnmExpected, (int)mnmFieldChars))
+                {
+                    ret = ERR_MNM_MISMATCH;
+                    break;
+                }
+            }
+
+            // pData 是大端 WCHAR，逐个字节反转再比较
+            bool mnmMatch = true;
+            const WCHAR* pMnmData = (const WCHAR*)(pData + MNM_DATA_OFFSET);
+            for (size_t i = 0; i < mnmSrcLen; i++)
+            {
+                WCHAR beChar = pMnmData[i];
+                WCHAR leChar = _byteswap_ushort((USHORT)beChar); // 大端 → 小端
+                if (leChar != mnmExpected[i])
+                {
+                    mnmMatch = false;
+                    break;
+                }
+            }
+            if (!mnmMatch)
+            {
+                ret = ERR_MNM_MISMATCH;
+                break;
+            }
+
+            //---------------------------------------------------------------------
+            // 4KB Count 
+            //---------------------------------------------------------------------
+            ULONG capRaw = 0;
+            memcpy(&capRaw, pData + CAP_DATA_OFFSET, sizeof(capRaw));
+            const ULONG n4KBCntD = pDlg->GetUfsOption()->qcPrm.n4KBCnt;
+            const ULONG n4KBCntS = _byteswap_ulong(capRaw);
+            if (n4KBCntD != n4KBCntS)
+            {
+                ret = ERR_4KBCNT_MISMATCH;
+                break;
+            }
+
+            //---------------------------------------------------------------------
+            // MID
+            //---------------------------------------------------------------------
+            const SIZE_T midLen = sizeof(pDlg->GetUfsOption()->qcPrm.mid);
+            if (memcmp(pDlg->GetUfsOption()->qcPrm.mid, pData + MID_DATA_OFFSET, midLen) != 0)
+            {
+                ret = ERR_MID_MISMATCH;
+                break;
+            }
+
+            //---------------------------------------------------------------------
+            // PNM: 
+            //---------------------------------------------------------------------
+            const SIZE_T pnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.pnm);
+            WCHAR pnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.pnm)] = { 0 };
+            const size_t pnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.pnm, sizeof(pDlg->GetUfsOption()->qcPrm.pnm));
+            if (pnmSrcLen == 0)
+            {
+                ret = ERR_PNM_MISMATCH;
+                break;
+            }
+            if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.pnm, (int)pnmSrcLen, pnmExpected, (int)pnmFieldChars))
+            {
+                ret = ERR_PNM_MISMATCH;
+                break;
+            }
+
+            // pData 是大端 WCHAR，逐个字节反转再比较
+            bool pnmMatch = true;
+            const WCHAR* pPnmData = (const WCHAR*)(pData + PNM_DATA_OFFSET);
+            for (size_t i = 0; i < pnmSrcLen; i++)
+            {
+                WCHAR beChar = pPnmData[i];
+                WCHAR leChar = _byteswap_ushort((USHORT)beChar);
+                if (leChar != pnmExpected[i])
+                {
+                    pnmMatch = false;
+                    break;
+                }
+            }
+            if (!pnmMatch)
+            {
+                ret = ERR_PNM_MISMATCH;
+                break;
+            }
+
+            //---------------------------------------------------------------------
+            // SN 读取
+            //---------------------------------------------------------------------
+            
+            for (int i = 0; i < 36; i += 2)
+            {
+                USHORT beValue = (pData[PSN_DATA_OFFSET + i] << 8) | pData[PSN_DATA_OFFSET + i + 1];
+                WCHAR wch = _byteswap_ushort(beValue);
+
+                if (wch == L'\0') break;
+                strSn.AppendChar(wch);
+            }
+        } while (0);
+    }
+
+    if (ret != ERROR_SUCCESS)
+    {
+        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyCid Failed") };
+        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        lg.error_code = ret;
+        ZeroMemory(lg.state, sizeof(lg.state));
+        strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
     }
     return ret;
 }

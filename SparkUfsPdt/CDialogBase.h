@@ -1,6 +1,6 @@
 #pragma once
 #include <afxdialogex.h>
-
+#include "ErrorCode.h"
 typedef struct main_param
 {
 	CHAR szFlowName[32];

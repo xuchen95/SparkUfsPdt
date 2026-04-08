@@ -360,6 +360,7 @@
     <ClInclude Include="CDialogQcSetting.h" />
     <ClInclude Include="CDialogSetting.h" />
     <ClInclude Include="CImpState.h" />
+    <ClInclude Include="ErrorCode.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PubFunc.h" />

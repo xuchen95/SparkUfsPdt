@@ -60,6 +60,9 @@
     <ClInclude Include="CImpState.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="ErrorCode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SparkUfsPdt.cpp">
