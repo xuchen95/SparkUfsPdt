@@ -125,6 +125,7 @@ void CDialogMainSetting::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogBase::DoDataExchange(pDX);
 	PUFS_OPTION pOption = GetUfsOption();
+	DDX_Check(pDX, IDC_CHECK_BURNIN_TEST, pOption->mainPrm.bBurnInTest);
 	// TesterFW 控制
 	DDX_Check(pDX, IDC_CHECK_EN_DL_TESTERFW, pOption->mainPrm.bDLTesterFW);
 	DDX_CharArray(pDX, IDC_EDIT_TESTER_FW_PATH, pOption->mainPrm.strTesterFwPath,sizeof(pOption->mainPrm.strTesterFwPath));

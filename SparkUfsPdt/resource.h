@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ 生成的包含文件。
-// 由 SparkUfsPdt.rc 使用
+// 供 SparkUfsPdt.rc 使用
 //
 #define IDD_SPARKUFSPDT_DIALOG          102
 #define IDR_MAINFRAME                   128
@@ -20,7 +20,7 @@
 #define IDC_BTN_TESTERFW_PATH_SEL       1008
 #define IDC_CB_FUNC_SEL                 1009
 #define IDC_EDIT_BANK_IDX               1010
-#define IDC_EDIT_ISP_FW_PATH			1011
+#define IDC_EDIT_ISP_FW_PATH            1011
 #define IDC_CHECK_ISP_DL                1012
 #define IDC_BTN_ISP_PATH_SEL            1013
 #define IDC_CHECK_CID_DL                1014
@@ -32,16 +32,6 @@
 #define IDC_EDIT_SN_MDT                 1020
 #define IDC_EDIT_SN_PRV                 1021
 #define IDC_EDIT_SN_MANU_NAME           1022
-
-// QC Setting - 使用新的 ID 避免冲突
-#define IDC_CHECK_QC_DISK_INFO          1040
-#define IDC_BTN_QC_DISK_INFO            1041
-#define IDC_CHECK_QC_PNM                1042
-#define IDC_CHECK_QC_MID_OID            1043
-#define IDC_EDIT_QC_BANK_INDEX          1044
-#define IDC_EDIT_QC_MID                 1045
-#define IDC_EDIT_QC_PNM                 1046
-#define IDC_EDIT_QC_OID                 1047
 #define IDC_CHECK_QC_MNM                1023
 #define IDC_EDIT_QC_MNM                 1024
 #define IDC_CHECK_QC_PRV_VER            1025
@@ -60,6 +50,14 @@
 #define IDC_TAB_PARAM                   1038
 #define IDC_TAB_PARAM_PAGE              1038
 #define IDC_EDIT_QC_SECTOR_CNT          1039
+#define IDC_CHECK_QC_DISK_INFO          1040
+#define IDC_BTN_QC_DISK_INFO            1041
+#define IDC_CHECK_QC_PNM                1042
+#define IDC_CHECK_QC_MID_OID            1043
+#define IDC_EDIT_QC_BANK_INDEX          1044
+#define IDC_EDIT_QC_MID                 1045
+#define IDC_EDIT_QC_PNM                 1046
+#define IDC_EDIT_QC_OID                 1047
 #define IDC_S_PDT_NAME                  1048
 #define IDC_RADIO_SET_BASE0             1049
 #define IDC_RADIO_SET_BASE1             1050
@@ -72,6 +70,8 @@
 #define IDC_BTN_SET_REMOTE_SN_SEL       1057
 #define IDC_EDIT_SET_REPORT             1058
 #define IDC_BTN_SET_REPORT_SEL          1059
+#define IDC_CHECK1                      1060
+#define IDC_CHECK_BURNIN_TEST           1060
 #define ID_SETTING_CONFIG               32771
 
 // Next default values for new objects
@@ -80,7 +80,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        201
 #define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1060
+#define _APS_NEXT_CONTROL_VALUE         1061
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

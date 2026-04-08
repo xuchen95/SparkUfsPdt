@@ -50,6 +50,7 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
+    BOOL bBurnInTest = pDlg->GetUfsOption()->mainPrm.bBurnInTest;
 
     lg.ufs_port = (uint8_t)portIndex;
     strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
@@ -71,10 +72,15 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
             Sleep(300);
             if ((ret = CImpState::Write1024KIspMpStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
-            if ((ret = CImpState::SetMdtStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::SetSnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+
+            if (!bBurnInTest)
+            {
+                if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+                Sleep(300);
+                if ((ret = CImpState::SetMdtStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = CImpState::SetSnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            }
+            
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             Sleep(300);
             //if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;

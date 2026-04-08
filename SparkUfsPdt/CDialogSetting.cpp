@@ -81,6 +81,7 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 
 	char buffer[1024] = {};
 
+	pOption->mainPrm.bBurnInTest = readInt("Main", "bBurnInTest", pOption->mainPrm.bBurnInTest);
 	pOption->mainPrm.funcSel = readInt("Main", "FuncSel", pOption->mainPrm.funcSel);
 	pOption->mainPrm.bDLTesterFW = readInt("Main", "bDLTesterFW", pOption->mainPrm.bDLTesterFW);
 	readString("Main", "strTesterFwPath", buffer, static_cast<DWORD>(sizeof(buffer)));
@@ -330,6 +331,9 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain/*=true*/, boo
 
 	if (saveMain)
 	{
+		value.Format(_T("%d"), pOption->mainPrm.bBurnInTest);
+		if (!writeValue(_T("Main"), _T("bBurnInTest"), value)) return FALSE;
+
 		value.Format(_T("%d"), pOption->mainPrm.funcSel);
 		if (!writeValue(_T("Main"), _T("FuncSel"), value)) return FALSE;
 

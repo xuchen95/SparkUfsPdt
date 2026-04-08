@@ -3,6 +3,7 @@
 #include "ErrorCode.h"
 typedef struct main_param
 {
+	BOOL bBurnInTest;
 	CHAR szFlowName[32];
 	INT funcSel;
 	BOOL bDLTesterFW;
