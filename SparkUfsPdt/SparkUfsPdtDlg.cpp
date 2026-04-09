@@ -13,6 +13,7 @@
 #include "../SparkLog/SparkLog.h"
 #include <cerrno>
 
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -200,10 +201,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     title.Format(_T("Metorage UFS TOOL VER %s"), GetGitVersionString().GetString());
     SetWindowText(title);
 
-    TCHAR currentDirectory[MAX_PATH] = {};
-    GetCurrentDirectory(MAX_PATH, currentDirectory);
-    CString baseIniPath;
-    baseIniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
+    CString baseIniPath = GetBaseSettingIniPath();
     CDialogBase::LoadBaseSettingFromIni(baseIniPath);
     if (PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting())
     {
@@ -218,9 +216,6 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
         SetMenu(&m_mainMenu);
     }
 
-    // TODO: add extra initialization here if needed
-    // Initialize the list view and add rows for each port. A progress
-    // control will be overlaid on the "Progress" column.
     CreateListViewColumns();
 
 	if (CWnd* pWnd = GetDlgItem(IDC_S_PDT_NAME))
@@ -238,6 +233,13 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     {
         pStart->EnableWindow(FALSE);
     }
+
+    TCHAR lastPath[MAX_PATH * 4] = {};
+    if (GetPrivateProfileString(_T("Base"), _T("LastSettingPath"), _T(""), lastPath, _countof(lastPath), baseIniPath) > 0)
+    {
+        LoadSettingFromPath(lastPath, false);
+    }
+
     return TRUE;  // return TRUE unless you set the focus to a control
 }
 
@@ -747,7 +749,6 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
             {
                 if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
                 {
-                    //MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
                 }
                 else
                 {
@@ -765,7 +766,6 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
             {
                 if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
                 {
-                    //MessageBox(_T("ISP Info Read successful!"), _T("Spark UFS Card PDT"), MB_OK);
                 }
                 else
                 {
@@ -774,6 +774,88 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
             }
         }
     }
+
+    SaveLastSettingPath(path);
+}
+
+CString CSparkUfsPdtDlg::GetBaseSettingIniPath() const
+{
+    TCHAR currentDirectory[MAX_PATH] = {};
+    GetCurrentDirectory(MAX_PATH, currentDirectory);
+    CString baseIniPath;
+    baseIniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
+    return baseIniPath;
+}
+
+void CSparkUfsPdtDlg::SaveLastSettingPath(const CString& path)
+{
+    if (path.IsEmpty())
+    {
+        return;
+    }
+
+    WritePrivateProfileString(_T("Base"), _T("LastSettingPath"), path, GetBaseSettingIniPath());
+}
+
+bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
+{
+    if (path.IsEmpty() || GetFileAttributes(path) == INVALID_FILE_ATTRIBUTES)
+    {
+        return false;
+    }
+
+    PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
+    if (!CDialogSetting::LoadFromIni(path, pOption))
+    {
+        if (showError)
+        {
+            MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
+        }
+        return false;
+    }
+
+    CString upperPath = path;
+    upperPath.MakeUpper();
+    bool isQc = (upperPath.Find(_T("QC")) >= 0);
+
+    m_settingPath = path;
+    UpdatePdtNameText();
+
+    if (CWnd* pStart = GetDlgItem(IDC_BTN_START_PDT))
+    {
+        pStart->EnableWindow(TRUE);
+    }
+
+    if (isQc)
+    {
+        if (pOption && pOption->qcPrm.szSramTestPath[0])
+        {
+            CString configuredPath = CString(pOption->qcPrm.szSramTestPath);
+            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
+            {
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != 0 && showError)
+                {
+                    MessageBox(_T("SRAM Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                }
+            }
+        }
+    }
+    else
+    {
+        if (pOption && pOption->mainPrm.strIspPath[0])
+        {
+            CString configuredPath = CString(pOption->mainPrm.strIspPath);
+            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
+            {
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != 0 && showError)
+                {
+                    MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                }
+            }
+        }
+    }
+
+    return true;
 }
 
 void CSparkUfsPdtDlg::InitStatusBar()

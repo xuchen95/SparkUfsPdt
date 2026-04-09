@@ -96,6 +96,10 @@ public:
     void ResetTaskCounts(int totalCount);
 
 private:
+    bool LoadSettingFromPath(const CString& path, bool showError);
+    void SaveLastSettingPath(const CString& path);
+    CString GetBaseSettingIniPath() const;
+
     CBrush m_pdtNameBrush;
     CString m_settingPath;
     CFont m_pdtNameFont;
