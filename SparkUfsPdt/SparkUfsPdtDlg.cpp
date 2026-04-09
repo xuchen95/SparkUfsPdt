@@ -228,6 +228,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 	m_settingPath.Empty();
 	UpdatePdtNameText();
 	InitStatusBar();
+	ResetTaskCounts(0);
 
     if (CWnd* pStart = GetDlgItem(IDC_BTN_START_PDT))
     {
@@ -474,7 +475,14 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
             }
         }
     }
-    ResetTaskCounts(totalReady);
+
+    // 保留累计计数，只更新本轮计划测试数量并重置端口完成标记
+    m_totalCount += totalReady;
+    for (int i = 0; i < UI_THREAD_COUNT; ++i)
+    {
+        m_portCompleted[i] = false;
+    }
+    UpdateStatusBarText();
 
     bool isFt3Config = false;
     if (!m_settingPath.IsEmpty())
