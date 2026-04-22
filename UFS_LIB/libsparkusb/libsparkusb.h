@@ -207,6 +207,12 @@ namespace spark
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
             int UfsReadCidInfo(PCHAR pData, UINT nSectorCnt);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsGetGeometry(PCHAR pData);
         public:
             PCHAR m_szDevicePath = nullptr;
 

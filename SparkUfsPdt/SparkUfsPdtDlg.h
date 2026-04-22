@@ -109,6 +109,8 @@ private:
     int m_passCount = 0;
     int m_failCount = 0;
     bool m_portCompleted[UI_THREAD_COUNT] = {};
+public:
+    CStringW m_strwSn[UI_THREAD_COUNT];
 };
 
 

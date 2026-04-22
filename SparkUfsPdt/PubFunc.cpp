@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "PubFunc.h"
+#include "CDialogBase.h"
+#include <cerrno>
 
 CString CPubFunc::IntToHex(UINT nValue, BOOL bUppercase, int nDigits)
 {
@@ -174,4 +176,133 @@ UINT CPubFunc::HexStringToUInt(const CString& strHex)
     UINT nVal = 0;
     _stscanf_s(strHex, _T("%x"), &nVal);
     return nVal;
+}
+
+bool CPubFunc::AcquireAndAdvanceSerialNumber(CString& allocatedSn)
+{
+    allocatedSn.Empty();
+
+    PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting();
+    if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
+    {
+        return false;
+    }
+
+    CString iniPath = CA2T(pBase->szRemoteSnPath);
+    if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+    {
+        return false;
+    }
+
+    WCHAR snBuf[128] = {};
+    DWORD len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snBuf, _countof(snBuf), CT2W(iniPath));
+    if (len == 0)
+    {
+        return false;
+    }
+
+    CStringW currentSn(snBuf);
+    currentSn.Trim();
+    if (currentSn.IsEmpty())
+    {
+        return false;
+    }
+
+    errno = 0;
+    wchar_t* endPtr = nullptr;
+    unsigned long long currentValue = wcstoull(currentSn, &endPtr, 16);
+    if (errno != 0 || endPtr == currentSn.GetString() || *endPtr != L'\0')
+    {
+        return false;
+    }
+
+    allocatedSn = CString(currentSn);
+
+    unsigned long long nextValue = currentValue + 1;
+    int width = currentSn.GetLength();
+    CStringW nextSn;
+    nextSn.Format(L"%0*llX", width > 0 ? width : 1, nextValue);
+
+    if (!WritePrivateProfileStringW(L"TEST", L"SerialNumber", nextSn, CT2W(iniPath)))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool CPubFunc::ReadTextFileA(const CString& path, CStringA& content)
+{
+    CFile file;
+    if (!file.Open(path, CFile::modeRead | CFile::typeBinary))
+    {
+        return false;
+    }
+    ULONGLONG length = file.GetLength();
+    CStringA data;
+    UINT toRead = static_cast<UINT>(length);
+    char* buffer = data.GetBuffer(toRead);
+    UINT read = file.Read(buffer, toRead);
+    data.ReleaseBuffer(read);
+    content = data;
+    return true;
+}
+
+CString CPubFunc::GetGitVersionString()
+{
+    TCHAR modulePath[MAX_PATH] = {};
+    GetModuleFileName(nullptr, modulePath, MAX_PATH);
+    CString dir = modulePath;
+    int pos = dir.ReverseFind(_T('\\'));
+    if (pos >= 0)
+    {
+        dir = dir.Left(pos);
+    }
+
+    CStringA headContent;
+    CString gitHash;
+    CString searchDir = dir;
+    for (int i = 0; i < 6 && !searchDir.IsEmpty(); ++i)
+    {
+        CString headPath = searchDir + _T("\\.git\\HEAD");
+        if (GetFileAttributes(headPath) != INVALID_FILE_ATTRIBUTES && ReadTextFileA(headPath, headContent))
+        {
+            headContent.Trim();
+            if (headContent.Left(4) == "ref:")
+            {
+                CStringA refPathA = headContent.Mid(4);
+                refPathA.Trim();
+                CString refPath = searchDir + _T("\\.git\\") + CString(refPathA);
+                CStringA refContent;
+                if (ReadTextFileA(refPath, refContent))
+                {
+                    refContent.Trim();
+                    gitHash = CString(refContent);
+                }
+            }
+            else
+            {
+                gitHash = CString(headContent);
+            }
+            break;
+        }
+
+        int lastSlash = searchDir.ReverseFind(_T('\\'));
+        if (lastSlash < 0)
+        {
+            break;
+        }
+        searchDir = searchDir.Left(lastSlash);
+    }
+
+    if (gitHash.IsEmpty())
+    {
+        return _T("unknown");
+    }
+
+    if (gitHash.GetLength() > 8)
+    {
+        gitHash = gitHash.Left(8);
+    }
+    return gitHash;
 }

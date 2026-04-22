@@ -709,3 +709,15 @@ int spark::sm3350::CSparkSm3350Util::UfsReadCidInfo(PCHAR pData, UINT nSectorCnt
     return ERROR_SUCCESS;
 }
 
+int spark::sm3350::CSparkSm3350Util::UfsGetGeometry(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    DWORD dwSpecLen = 0x00000057;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadGeometryDescriptor(pData, dwSpecLen))) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+

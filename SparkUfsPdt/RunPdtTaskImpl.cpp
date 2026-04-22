@@ -66,24 +66,20 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         do
         {
             if ((ret = CImpState::RebootStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::UpiuForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
+            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpStartStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
             if ((ret = CImpState::Write1024KIspMpStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
 
             if (!bBurnInTest)
             {
                 if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-                Sleep(300);
                 if ((ret = CImpState::SetMdtStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
                 if ((ret = CImpState::SetSnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             }
             
-
-            Sleep(300);
-            //if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = CImpState::VerifySnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             //if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::PowerOffStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
         } while (0);
@@ -123,7 +119,7 @@ int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
-
+    BOOL bForceRomMode = pDlg->GetBaseSetting()->ForceRomMode;
     lg.ufs_port = (uint8_t)portIndex;
     strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
 
@@ -138,24 +134,20 @@ int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
         do
         {
             if ((ret = CImpState::RebootStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::UpiuForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
+            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::VerifyCidStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-
             if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::UpiuForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
+            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpStartStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::WriteSramStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::VerifySram1Stage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
             if ((ret = CImpState::VerifySram2Stage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            Sleep(300);
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = CImpState::VerifyGeometryStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::PowerOffStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
         } while (0);
     }

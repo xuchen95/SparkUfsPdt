@@ -2,6 +2,8 @@
 #include "../SparkLog/SparkLog.h"
 
 class CSparkUfsPdtDlg;
+#define UPIU_FORCE_ROM_MODE FALSE
+#define VCC_FORCE_ROM_MODE TRUE
 
 class CImpState
 {
@@ -13,6 +15,7 @@ public:
     static int PowerOffStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int CardInitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
+    static int ForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int UpiuForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int VccOffForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
     static int MpStartStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
@@ -27,9 +30,15 @@ public:
     static int VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
 
     static int VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
+    static int VerifyGeometryStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
+    static int VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg);
 
+public:
+    //Set Data functions for different stages, these functions are called by the stage functions to update the dialog with relevant information such as CID, SN, MDT, ISP info etc.
     static void SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData);
     static void SetMdtData(CSparkUfsPdtDlg* pDlg, char* pData);
     static void GetIspString(CSparkUfsPdtDlg* pDlg, char* isp);
+
+    
 };
 

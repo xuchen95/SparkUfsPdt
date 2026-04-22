@@ -10,6 +10,7 @@
 #include "CDialogSetting.h"
 #include "CDialogBaseSet.h"
 #include "ThreadPool.h"
+#include "PubFunc.h"
 #include "../SparkLog/SparkLog.h"
 #include <cerrno>
 
@@ -21,136 +22,6 @@
 using namespace spark::sm3350;
 
 char g_UfsIsp[UFS_ISP_SIZE] = {};
-
-static bool AcquireAndAdvanceSerialNumber(CString& allocatedSn)
-{
-    allocatedSn.Empty();
-
-    PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting();
-    if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
-    {
-        return false;
-    }
-
-    CString iniPath = CA2T(pBase->szRemoteSnPath);
-    if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
-    {
-        return false;
-    }
-
-    WCHAR snBuf[128] = {};
-    DWORD len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snBuf, _countof(snBuf), CT2W(iniPath));
-    if (len == 0)
-    {
-        return false;
-    }
-
-    CStringW currentSn(snBuf);
-    currentSn.Trim();
-    if (currentSn.IsEmpty())
-    {
-        return false;
-    }
-
-    errno = 0;
-    wchar_t* endPtr = nullptr;
-    unsigned long long currentValue = wcstoull(currentSn, &endPtr, 10);
-    if (errno != 0 || endPtr == currentSn.GetString() || *endPtr != L'\0')
-    {
-        return false;
-    }
-
-    allocatedSn = CString(currentSn);
-
-    unsigned long long nextValue = currentValue + 1;
-    int width = currentSn.GetLength();
-    CStringW nextSn;
-    nextSn.Format(L"%0*llu", width > 0 ? width : 1, nextValue);
-
-    if (!WritePrivateProfileStringW(L"TEST", L"SerialNumber", nextSn, CT2W(iniPath)))
-    {
-        return false;
-    }
-
-    return true;
-}
-
-static bool ReadTextFileA(const CString& path, CStringA& content)
-{
-    CFile file;
-    if (!file.Open(path, CFile::modeRead | CFile::typeBinary))
-    {
-        return false;
-    }
-    ULONGLONG length = file.GetLength();
-    CStringA data;
-    UINT toRead = static_cast<UINT>(length);
-    char* buffer = data.GetBuffer(toRead);
-    UINT read = file.Read(buffer, toRead);
-    data.ReleaseBuffer(read);
-    content = data;
-    return true;
-}
-
-static CString GetGitVersionString()
-{
-    TCHAR modulePath[MAX_PATH] = {};
-    GetModuleFileName(nullptr, modulePath, MAX_PATH);
-    CString dir = modulePath;
-    int pos = dir.ReverseFind(_T('\\'));
-    if (pos >= 0)
-    {
-        dir = dir.Left(pos);
-    }
-
-    CStringA headContent;
-    CString gitHash;
-    CString searchDir = dir;
-    for (int i = 0; i < 6 && !searchDir.IsEmpty(); ++i)
-    {
-        CString headPath = searchDir + _T("\\.git\\HEAD");
-        if (GetFileAttributes(headPath) != INVALID_FILE_ATTRIBUTES && ReadTextFileA(headPath, headContent))
-        {
-            headContent.Trim();
-            if (headContent.Left(4) == "ref:")
-            {
-                CStringA refPathA = headContent.Mid(4);
-                refPathA.Trim();
-                CString refPath = searchDir + _T("\\.git\\") + CString(refPathA);
-                CStringA refContent;
-                if (ReadTextFileA(refPath, refContent))
-                {
-                    refContent.Trim();
-                    gitHash = CString(refContent);
-                }
-            }
-            else
-            {
-                gitHash = CString(headContent);
-            }
-            break;
-        }
-
-        int lastSlash = searchDir.ReverseFind(_T('\\'));
-        if (lastSlash < 0)
-        {
-            break;
-        }
-        searchDir = searchDir.Left(lastSlash);
-    }
-
-    if (gitHash.IsEmpty())
-    {
-        return _T("unknown");
-    }
-
-    if (gitHash.GetLength() > 8)
-    {
-        gitHash = gitHash.Left(8);
-    }
-    return gitHash;
-}
-
 
 // define static pool pointer
 std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
@@ -198,7 +69,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
     CString title;
-    title.Format(_T("Metorage UFS TOOL VER %s"), GetGitVersionString().GetString());
+    title.Format(_T("Metorage UFS TOOL VER %s"), CPubFunc::GetGitVersionString().GetString());
     SetWindowText(title);
 
     CString baseIniPath = GetBaseSettingIniPath();
@@ -513,8 +384,9 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
                 if (isFt3Config)
                 {
                     CString snAllocated;
-                    if (AcquireAndAdvanceSerialNumber(snAllocated))
+                    if (CPubFunc::AcquireAndAdvanceSerialNumber(snAllocated))
                     {
+
                         pList->SetItemText(i, 6, snAllocated);
                     }
                     else
@@ -585,7 +457,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
         pList->InsertColumn(8, _T("OID"), LVCFMT_LEFT, 80);
         pList->InsertColumn(9, _T("FW Version"), LVCFMT_LEFT, 100);
 
-        // Insert rows and create a small progress control over the Progress cell
+        // Insert rows and create a small progress control over the Progress column
         for (int i = 0; i < CSparkUfsPdtDlg::UI_THREAD_COUNT; ++i)
         {
             CString port;
@@ -655,6 +527,7 @@ void CSparkUfsPdtDlg::InitListViewItems()
             pList->EnsureVisible(i, FALSE);
             m_progress[i].SetRange(0, 100);
             m_progress[i].SetPos(0);
+            m_strwSn[i]=CStringW(L"",128);
         }
     }
 }
@@ -679,9 +552,7 @@ void CSparkUfsPdtDlg::UpdatePdtNameText()
 		CString upperPath = m_settingPath;
 		upperPath.MakeUpper();
 		if (upperPath.Find(_T("FT1")) >= 0)
-			label = _T("FT1");
-		else if (upperPath.Find(_T("FT2")) >= 0)
-			label = _T("FT2");      
+			label = _T("FT1"); 
 		else if (upperPath.Find(_T("FT3")) >= 0)
 			label = _T("FT3");
 		else if (upperPath.Find(_T("QC")) >= 0)

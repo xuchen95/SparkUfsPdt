@@ -125,6 +125,26 @@ int CImpState::CardInitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "CardInit Failed", _TRUNCATE);
     }
+    Sleep(300);
+    return ret;
+}
+
+int CImpState::ForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    BOOL bForceRomMode = pDlg->GetBaseSetting()->ForceRomMode;
+    do
+    {
+        if (UPIU_FORCE_ROM_MODE == bForceRomMode)
+        {
+            if ((ret = CImpState::UpiuForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+        }
+        else if (VCC_FORCE_ROM_MODE == bForceRomMode)
+        {
+            if ((ret = CImpState::VccOffForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+        }
+    } while (0);
+    Sleep(300);
     return ret;
 }
 
@@ -281,6 +301,7 @@ void CImpState::SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData)
         *(pData + i) = 0x00;
         *(pData + i + 1) = 0x20;
     }
+    memcpy(pDlg->m_strwSn[portIndex].GetBuffer(), pData, 64);
 }
 
 void CImpState::GetIspString(CSparkUfsPdtDlg* pDlg, char* isp)
@@ -291,6 +312,7 @@ void CImpState::GetIspString(CSparkUfsPdtDlg* pDlg, char* isp)
     }
 	CPubFunc::HexToBytes(pDlg->GetUfsOption()->qcPrm.isp, (BYTE*)isp, sizeof(pDlg->GetUfsOption()->qcPrm.isp)/2);
 }
+
 
 void CImpState::SetMdtData(CSparkUfsPdtDlg* pDlg, char* pData)
 {
@@ -715,6 +737,100 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+int CImpState::VerifyGeometryStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char pData[512] = { 0 };
+
+    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyGeometry") };
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+
+    ULONG SectorCntStd = pDlg->GetUfsOption()->qcPrm.n4KBCnt * 4 * 2;
+
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+
+    do
+    {
+        if ((ret = sm3350.UfsGetGeometry(pData)) != ERROR_SUCCESS) break;
+        //Geometry Identifier
+        if(0x57 != pData[0] || 0x07 != pData[1])
+        {
+            ret = ERR_GEOMETRY_MISMATCH;
+            break;
+		}
+        //capacity
+        DWORD capLaw = _byteswap_ulong(*(DWORD*)(pData + 0x04));
+        DWORD capHigh = _byteswap_ulong(*(DWORD*)(pData + 0x08));
+		if (SectorCntStd != capHigh)
+        {
+            ret = ERR_CAPACITY_MISMATCH;
+            break;
+        }
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyGeometry Failed") };
+        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        lg.error_code = ret;
+        ZeroMemory(lg.state, sizeof(lg.state));
+        strncpy_s(lg.state, _countof(lg.state), "VerifyGeometry Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char pData[512 * 0x03] = { 0 };
+    CStringW strSn;
+#define PSN_DATA_OFFSET (16 * 76)
+
+    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifySn") };
+    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+
+    if (pDlg == nullptr || pDlg->GetUfsOption() == nullptr)
+    {
+        ret = ERROR_INVALID_PARAMETER;
+    }
+    else
+    {
+        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+        do
+        {
+            if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+            //---------------------------------------------------------------------
+            // SN 校验
+            //---------------------------------------------------------------------
+
+            for (int i = 0; i < 64; i += 2)
+            {
+                USHORT beValue = (pData[PSN_DATA_OFFSET + i] << 8) | pData[PSN_DATA_OFFSET + i + 1];
+                WCHAR wch = _byteswap_ushort(beValue);
+
+                if (wch == L'\0') break;
+                strSn.AppendChar(wch);
+            }
+            if (0 != pDlg->m_strwSn[portIndex].Compare(strSn))
+            {
+                ret = ERR_SN_MISMATCH;
+                break;
+            }
+        } while (0);
+    }
+
+    if (ret != ERROR_SUCCESS)
+    {
+        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifySn Failed") };
+        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        lg.error_code = ret;
+        ZeroMemory(lg.state, sizeof(lg.state));
+        strncpy_s(lg.state, _countof(lg.state), "VerifySn Failed", _TRUNCATE);
     }
     return ret;
 }

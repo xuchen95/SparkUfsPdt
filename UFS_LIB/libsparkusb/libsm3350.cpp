@@ -435,6 +435,7 @@ int CSm3350Vcmds::UfsReadInterconnectDescriptor(PCHAR pData, UINT32 length)
 
 int CSm3350Vcmds::UfsReadGeometryDescriptor(PCHAR pData, UINT32 length)
 {
+
     return UfsReadDescriptor(pData, 0x07, 0x00, 0x00, length);
 }
 

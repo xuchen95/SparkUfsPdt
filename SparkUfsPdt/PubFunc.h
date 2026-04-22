@@ -67,4 +67,8 @@ public:
     // 11. 十六进制字符串 → 整数
     // ==============================================
     static UINT HexStringToUInt(const CString& strHex);
+
+    static bool AcquireAndAdvanceSerialNumber(CString& allocatedSn);
+    static bool ReadTextFileA(const CString& path, CStringA& content);
+    static CString GetGitVersionString();
 };
