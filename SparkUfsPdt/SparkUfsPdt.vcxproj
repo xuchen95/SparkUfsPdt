@@ -207,7 +207,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;$(SolutionDir)serial\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -230,7 +230,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;$(SolutionDir)serial\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -255,7 +255,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;$(SolutionDir)serial\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -282,7 +282,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(solutionDir)UFS_LIB\libsparkusb;$(solutionDir)UFS_LIB\llibtfcard_mfc;$(solutionDir)ThreadPool;$(SolutionDir)serial\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -360,11 +360,13 @@
     <ClInclude Include="CDialogQcSetting.h" />
     <ClInclude Include="CDialogSetting.h" />
     <ClInclude Include="CImpState.h" />
+    <ClInclude Include="CSerialPort.h" />
     <ClInclude Include="ErrorCode.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PubFunc.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="SerialDef.h" />
     <ClInclude Include="SparkUfsPdt.h" />
     <ClInclude Include="SparkUfsPdtDlg.h" />
     <ClInclude Include="StateImp.h" />
@@ -377,6 +379,7 @@
     <ClCompile Include="CDialogQcSetting.cpp" />
     <ClCompile Include="CDialogSetting.cpp" />
     <ClCompile Include="CImpState.cpp" />
+    <ClCompile Include="CSerialPort.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_XP|x64'">Create</PrecompiledHeader>

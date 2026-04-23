@@ -63,6 +63,12 @@
     <ClInclude Include="ErrorCode.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CSerialPort.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SerialDef.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SparkUfsPdt.cpp">
@@ -99,6 +105,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="PubFunc.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CSerialPort.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
