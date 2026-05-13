@@ -23,6 +23,7 @@ private:
     int m_portMappingSel = 0;
     int m_forceRomMode = 0;
     BOOL m_snSeparateIni = FALSE;
+    BOOL m_enableFactoryCmdLog = TRUE;
     CString m_remoteSnPath;
     CString m_reportPath;
 };

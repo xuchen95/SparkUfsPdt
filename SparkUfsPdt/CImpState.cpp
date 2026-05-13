@@ -8,6 +8,11 @@
 using namespace spark::sm3350;
 using TaskProgressMsg = CSparkUfsPdtDlg::TaskProgressMsg;
 
+// Static ISP mark snapshot – written once by the UI thread, read-only by worker threads
+char   CImpState::s_ispMark[CImpState::ISP_MARK_SIZE] = {};
+bool   CImpState::s_ispMarkValid = false;
+std::shared_mutex CImpState::s_ispMarkMutex;
+
 bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
     char* cDest, size_t cDestLen,
     UINT codePage)
@@ -304,13 +309,37 @@ void CImpState::SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData)
     memcpy(pDlg->m_strwSn[portIndex].GetBuffer(), pData, 64);
 }
 
-void CImpState::GetIspString(CSparkUfsPdtDlg* pDlg, char* isp)
+void CImpState::GetQCIspString(CSparkUfsPdtDlg* pDlg, char* isp)
 {
     if (pDlg == nullptr || isp == nullptr)
     {
         return;
     }
 	CPubFunc::HexToBytes(pDlg->GetUfsOption()->qcPrm.isp, (BYTE*)isp, sizeof(pDlg->GetUfsOption()->qcPrm.isp)/2);
+}
+
+void CImpState::GetIspMark(CSparkUfsPdtDlg* pDlg, char* isp)
+{
+
+    if (pDlg == nullptr || isp == nullptr)
+    {
+        return;
+    }
+
+    const char* ispPath = pDlg->GetUfsOption()->mainPrm.strIspPath;
+    if (ispPath[0] == '\0')
+    {
+        return;
+    }
+
+    int fileSize = 0;
+    if (spark::file::fnFileSize(ispPath, &fileSize) != ERROR_SUCCESS || fileSize < 16)
+    {
+        return;
+    }
+
+    memcpy(isp, g_UfsIsp + fileSize - 16, 16);
+
 }
 
 
@@ -379,11 +408,12 @@ int CImpState::SetMdtStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
 int CImpState::VerifyIspStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    char ispString[32] = { 0 };
+    char ispString[16] = { 0 };
     char pData[512 * 8] = { 0 };
     TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyISP") };
     if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
-    GetIspString(pDlg, ispString);
+    //GetQCIspString(pDlg, ispString);
+    GetIspMark(pDlg, ispString);
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -833,4 +863,16 @@ int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
         strncpy_s(lg.state, _countof(lg.state), "VerifySn Failed", _TRUNCATE);
     }
     return ret;
+}
+
+void CImpState::UpdateIspMark(const char* ispBuf, int ispFileSize)
+{
+    std::unique_lock<std::shared_mutex> lock(s_ispMarkMutex);
+    if (ispBuf == nullptr || ispFileSize < ISP_MARK_SIZE)
+    {
+        s_ispMarkValid = false;
+        return;
+    }
+    memcpy(s_ispMark, ispBuf + ispFileSize - ISP_MARK_SIZE, ISP_MARK_SIZE);
+    s_ispMarkValid = true;
 }

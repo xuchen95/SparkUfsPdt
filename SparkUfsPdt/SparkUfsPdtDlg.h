@@ -6,6 +6,8 @@
 #include <memory>
 #include "libsparkusb.h"
 #include "CDialogBase.h"
+#include "CSerialPort.h"
+#include "SerialDef.h"
 extern char g_UfsIsp[UFS_ISP_SIZE];
 
 // CSparkUfsPdtDlg dialog
@@ -55,6 +57,7 @@ public:
     afx_msg void OnBnClickedBtnStartPdt();
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnSettingConfig();
+    afx_msg void OnCbnSelchangeCbComSel();
 
     // Run PDT for a specific port index (0-based) and report progress to UI
     int RunPdtTask(int portIndex);
@@ -65,6 +68,8 @@ public:
     // Custom message for worker threads to report progress to the UI thread.
     static const UINT WM_TASK_PROGRESS = (WM_USER + 0x65);
     afx_msg LRESULT OnTaskProgress(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnFactoryCmdDownload(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam);
 
     // Shared progress message structure used between worker code and UI handler
     struct TaskProgressMsg {
@@ -99,8 +104,25 @@ private:
     bool LoadSettingFromPath(const CString& path, bool showError);
     void SaveLastSettingPath(const CString& path);
     CString GetBaseSettingIniPath() const;
+    void RefreshFactoryComList();
+    bool ConnectFactorySerial(const CString& comName);
+    void UpdateFactorySerialLinkIndicator();
+    void DiagnosticSerialPortStatus();  // New diagnostic function
+    CString GetDefaultFactoryCom() const;
+    void SaveDefaultFactoryCom(const CString& comName);
+    UINT GetFactoryComBaudRate() const;
+    UINT GetFactoryComByteSize() const;
+    UINT GetFactoryComParity() const;
+    UINT GetFactoryComStopBits() const;
+    bool IsPortRunnableStatus(const CString& status) const;
+    void SetScanButtonEnabled(bool enabled);
 
     CBrush m_pdtNameBrush;
+    CBrush m_factoryComLinkedBrushGreen;
+    CBrush m_factoryComLinkedBrushRed;
+    bool m_factoryComConnected = false;
+    bool m_scanButtonDisabledByRun = false;
+    int  m_activeTaskCount = 0;
     CString m_settingPath;
     CFont m_pdtNameFont;
     CStatusBarCtrl m_statusBar;
@@ -109,101 +131,12 @@ private:
     int m_passCount = 0;
     int m_failCount = 0;
     bool m_portCompleted[UI_THREAD_COUNT] = {};
+
+    CSerialPort m_factorySerial;
+    int m_portGroupIdx[UI_THREAD_COUNT] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
+    int m_portGroupPos[UI_THREAD_COUNT] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
+    int m_groupPending[2] = { 0, 0 };
+    WORD m_groupResult[2][MACHINE_DEVICE_CNT] = {};
 public:
     CStringW m_strwSn[UI_THREAD_COUNT];
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

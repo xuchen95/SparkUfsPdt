@@ -12,6 +12,7 @@
 #include "ThreadPool.h"
 #include "PubFunc.h"
 #include "../SparkLog/SparkLog.h"
+#include "CImpState.h"
 #include <cerrno>
 
 
@@ -54,6 +55,9 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_PDT_SETTING, &CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting)
 	ON_COMMAND(ID_SETTING_CONFIG, &CSparkUfsPdtDlg::OnSettingConfig)
 	ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
+	ON_MESSAGE(FACOTRY_CMD_DOWNLOAD, &CSparkUfsPdtDlg::OnFactoryCmdDownload)
+	ON_MESSAGE(FACOTRY_CMD_START_TEST, &CSparkUfsPdtDlg::OnFactoryCmdStartTest)
+	ON_CBN_SELCHANGE(IDC_CB_COM_SEL, &CSparkUfsPdtDlg::OnCbnSelchangeCbComSel)
 END_MESSAGE_MAP()
 
 
@@ -69,7 +73,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
     CString title;
-    title.Format(_T("Metorage UFS TOOL VER %s"), CPubFunc::GetGitVersionString().GetString());
+    title.Format(_T("MetORAGE UFS TOOL VER %s"), CPubFunc::GetGitVersionString().GetString());
     SetWindowText(title);
 
     CString baseIniPath = GetBaseSettingIniPath();
@@ -96,6 +100,10 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 
 	m_pdtNameBrush.DeleteObject();
 	m_pdtNameBrush.CreateSolidBrush(RGB(255, 255, 255));
+    m_factoryComLinkedBrushGreen.DeleteObject();
+    m_factoryComLinkedBrushGreen.CreateSolidBrush(RGB(0, 200, 0));
+    m_factoryComLinkedBrushRed.DeleteObject();
+    m_factoryComLinkedBrushRed.CreateSolidBrush(RGB(220, 0, 0));
 	m_settingPath.Empty();
 	UpdatePdtNameText();
 	InitStatusBar();
@@ -110,6 +118,18 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     if (GetPrivateProfileString(_T("Base"), _T("LastSettingPath"), _T(""), lastPath, _countof(lastPath), baseIniPath) > 0)
     {
         LoadSettingFromPath(lastPath, false);
+    }
+
+    m_factorySerial.SetNotifyWnd(m_hWnd);
+    m_factorySerial.m_stRecvHead.nUM_RECVDATA = UM_RECVDATA;
+    
+    RefreshFactoryComList();
+    ConnectFactorySerial(GetDefaultFactoryCom());
+    UpdateFactorySerialLinkIndicator();
+
+    if (CWnd* pPic = GetDlgItem(IDC_S_PIC_COM_LINKED))
+    {
+        pPic->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
     }
 
     return TRUE;  // return TRUE unless you set the focus to a control
@@ -306,7 +326,9 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         }
     }
 
-    if (progress >= 100 && port >= 0 && port < UI_THREAD_COUNT)
+    const bool earlyFailForGroup = (progress < 100 && result != 0 && port >= 0 && port < UI_THREAD_COUNT && m_portGroupIdx[port] >= 0 && m_portGroupIdx[port] < 2);
+
+    if ((progress >= 100 || earlyFailForGroup) && port >= 0 && port < UI_THREAD_COUNT)
     {
         if (!m_portCompleted[port])
         {
@@ -320,6 +342,36 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 m_failCount++;
             }
             UpdateStatusBarText();
+
+            if (m_activeTaskCount > 0)
+            {
+                --m_activeTaskCount;
+                if (m_activeTaskCount == 0 && m_scanButtonDisabledByRun)
+                {
+                    SetScanButtonEnabled(true);
+                    m_scanButtonDisabledByRun = false;
+                }
+            }
+
+            int g = m_portGroupIdx[port];
+            int pos = m_portGroupPos[port];
+            if (g >= 0 && g < 2 && pos >= 0 && pos < MACHINE_DEVICE_CNT && m_groupPending[g] > 0)
+            {
+                m_groupResult[g][pos] = static_cast<WORD>((result == 0 || result == ERROR_SUCCESS) ? 0x0001 : (result & 0xFFFF));
+                m_groupPending[g]--;
+                if (m_groupPending[g] == 0)
+                {
+                    m_factorySerial.SendGroupTestDone(static_cast<BYTE>(g), m_groupResult[g]);
+                    for (int i = 0; i < UI_THREAD_COUNT; ++i)
+                    {
+                        if (m_portGroupIdx[i] == g)
+                        {
+                            m_portGroupIdx[i] = -1;
+                            m_portGroupPos[i] = -1;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -340,7 +392,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
         for (int i = 0; i < UI_THREAD_COUNT; ++i)
         {
             CString status = pList->GetItemText(i, 2);
-            if (status.CompareNoCase(_T("Ready")) == 0)
+            if (IsPortRunnableStatus(status))
             {
                 totalReady++;
             }
@@ -373,13 +425,17 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
         InitializeCriticalSection(&g_logLock);
         g_logLockInited = true;
     }
+
+    bool startedAnyTask = false;
+    int enqueuedCount = 0;
+
     // enqueue a task per detected Ready device
     if (pList)
     {
         for (int i = 0; i < UI_THREAD_COUNT; ++i)
         {
             CString status = pList->GetItemText(i, 2);
-            if (status.CompareNoCase(_T("Ready")) == 0)
+            if (IsPortRunnableStatus(status))
             {
                 if (isFt3Config)
                 {
@@ -399,6 +455,8 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
 
                 try {
                     s_pool->enqueue([this, i]() { return this->RunPdtTask(i); });
+                    startedAnyTask = true;
+                    enqueuedCount++;
                 }
                 catch (const std::exception&)
                 {
@@ -409,6 +467,16 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
             }
         }
     }
+
+    if (startedAnyTask)
+    {
+        m_activeTaskCount += enqueuedCount;
+        if (!m_scanButtonDisabledByRun)
+        {
+            SetScanButtonEnabled(false);
+            m_scanButtonDisabledByRun = true;
+        }
+    }
 }
 
 void CSparkUfsPdtDlg::OnDestroy()
@@ -417,6 +485,8 @@ void CSparkUfsPdtDlg::OnDestroy()
     // the log critical section if it was initialized.
 
     CDialogEx::OnDestroy();
+
+    m_factorySerial.Close();
 
     // destroy the static thread pool to join worker threads gracefully
     if (s_pool)
@@ -433,6 +503,8 @@ void CSparkUfsPdtDlg::OnDestroy()
     }
 
     m_pdtNameBrush.DeleteObject();
+    m_factoryComLinkedBrushGreen.DeleteObject();
+    m_factoryComLinkedBrushRed.DeleteObject();
     m_pdtNameFont.DeleteObject();
 }
 
@@ -541,6 +613,11 @@ HBRUSH CSparkUfsPdtDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SetBkColor(RGB(255, 255, 255));
 		return (HBRUSH)m_pdtNameBrush.GetSafeHandle();
 	}
+    if (pWnd && pWnd->GetDlgCtrlID() == IDC_S_PIC_COM_LINKED)
+    {
+        pDC->SetBkColor(m_factoryComConnected ? RGB(0, 200, 0) : RGB(220, 0, 0));
+        return (HBRUSH)(m_factoryComConnected ? m_factoryComLinkedBrushGreen.GetSafeHandle() : m_factoryComLinkedBrushRed.GetSafeHandle());
+    }
 	return hbr;
 }
 
@@ -579,6 +656,125 @@ void CSparkUfsPdtDlg::UpdatePdtNameText()
 	}
 }
 
+bool CSparkUfsPdtDlg::IsPortRunnableStatus(const CString& status) const
+{
+    if (status.CompareNoCase(_T("Ready")) == 0)
+    {
+        return true;
+    }
+
+    if (status.CompareNoCase(_T("Success")) == 0)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void CSparkUfsPdtDlg::SetScanButtonEnabled(bool enabled)
+{
+    if (CWnd* pScan = GetDlgItem(IDC_BTN_SCAN_DEVICE))
+    {
+        pScan->EnableWindow(enabled ? TRUE : FALSE);
+    }
+}
+
+LRESULT CSparkUfsPdtDlg::OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam)
+{
+    try
+    {
+        FACTORYCMD cmd = {};
+        if (!m_factorySerial.PopFactoryCmd(cmd))
+        {
+            OutputDebugString(_T("[OnFactoryCmdStartTest] ERROR: Failed to pop command\n"));
+            return 0;
+        }
+
+        const int group = (cmd.group == 0x01) ? 1 : 0;
+        const int portBase = (group == 0) ? 0 : 8;
+
+        if (!s_pool)
+        {
+            s_pool.reset(new ThreadPool(UI_THREAD_COUNT));
+        }
+        if (!g_logLockInited)
+        {
+            InitializeCriticalSection(&g_logLock);
+            g_logLockInited = true;
+        }
+
+        int enqueuedCount = 0;
+        CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+        if (!pList)
+        {
+            m_groupPending[group] = 0;
+            m_factorySerial.SendGroupTestDone(static_cast<BYTE>(group), m_groupResult[group]);
+            return 0;
+        }
+
+        for (int i = 0; i < MACHINE_DEVICE_CNT; ++i)
+        {
+            m_groupResult[group][i] = cmd.device[i] ? 0xFFFF : 0x0000;
+        }
+
+        for (int i = 0; i < MACHINE_DEVICE_CNT; ++i)
+        {
+            if (!cmd.device[i]) continue;
+
+            int port = portBase + i;
+            if (port < 0 || port >= UI_THREAD_COUNT)
+            {
+                m_groupResult[group][i] = 0x0FFF;
+                continue;
+            }
+
+            CString status = pList->GetItemText(port, 2);
+            if (!IsPortRunnableStatus(status))
+            {
+                m_groupResult[group][i] = 0x0FFF;
+                continue;
+            }
+
+            m_portCompleted[port] = false;
+            m_portGroupIdx[port] = group;
+            m_portGroupPos[port] = i;
+
+            try
+            {
+                s_pool->enqueue([this, port]() { return this->RunPdtTask(port); });
+                enqueuedCount++;
+            }
+            catch (...)
+            {
+                m_groupResult[group][i] = 0x0FFF;
+            }
+        }
+
+        if (enqueuedCount > 0)
+        {
+            m_totalCount += enqueuedCount;
+            m_groupPending[group] = enqueuedCount;
+            m_activeTaskCount += enqueuedCount;
+            if (!m_scanButtonDisabledByRun)
+            {
+                SetScanButtonEnabled(false);
+                m_scanButtonDisabledByRun = true;
+            }
+            UpdateStatusBarText();
+        }
+        else
+        {
+            m_groupPending[group] = 0;
+            m_factorySerial.SendGroupTestDone(static_cast<BYTE>(group), m_groupResult[group]);
+        }
+    }
+    catch (...)
+    {
+        OutputDebugString(_T("[OnFactoryCmdStartTest] Unknown exception\n"));
+    }
+    return 0;
+}
+
 void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
 {
     char currentDirectory[MAX_PATH] = {};
@@ -602,6 +798,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
         MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
         return;
     }
+
     CString upperPath = path;
     upperPath.MakeUpper();
     bool isQc = (upperPath.Find(_T("QC")) >= 0);
@@ -612,48 +809,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
     settingDlg.SetVisiblePages(!isQc, isQc);
     settingDlg.DoModal();
 
-    m_settingPath = path;
-    UpdatePdtNameText();
-
-    if (CWnd* pStart = GetDlgItem(IDC_BTN_START_PDT))
-    {
-        pStart->EnableWindow(TRUE);
-    }
-    if (isQc)
-    {
-        if (pOption && pOption->qcPrm.szSramTestPath[0])
-        {
-            CString configuredPath = CString(pOption->qcPrm.szSramTestPath);
-            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
-            {
-                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
-                {
-                }
-                else
-                {
-                    MessageBox(_T("SRAM Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
-                }
-            }
-        }
-    }
-    else
-    {
-        if (pOption && pOption->mainPrm.strIspPath[0])
-        {
-            CString configuredPath = CString(pOption->mainPrm.strIspPath);
-            if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
-            {
-                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) == 0)
-                {
-                }
-                else
-                {
-                    MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
-                }
-            }
-        }
-    }
-
+    LoadSettingFromPath(path, true);
     SaveLastSettingPath(path);
 }
 
@@ -726,9 +882,19 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
             CString configuredPath = CString(pOption->mainPrm.strIspPath);
             if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
             {
-                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != 0 && showError)
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != 0)
                 {
-                    MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                    if (showError)
+                    {
+                        MessageBox(_T("ISP Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                    }
+                    CImpState::UpdateIspMark(nullptr, 0);
+                }
+                else
+                {
+                    int ispFileSize = 0;
+                    spark::file::fnFileSize(CStringA(configuredPath), &ispFileSize);
+                    CImpState::UpdateIspMark(g_UfsIsp, ispFileSize);
                 }
             }
         }
@@ -806,15 +972,206 @@ void CSparkUfsPdtDlg::OnSettingConfig()
     dlg.DoModal();
 }
 
+void CSparkUfsPdtDlg::OnCbnSelchangeCbComSel()
+{
+    CComboBox* pCom = static_cast<CComboBox*>(GetDlgItem(IDC_CB_COM_SEL));
+    if (!pCom)
+    {
+        return;
+    }
 
+    int nSel = pCom->GetCurSel();
+    if (nSel < 0)
+    {
+        return;
+    }
 
+    CString comName;
+    pCom->GetLBText(nSel, comName);
+    if (!comName.IsEmpty())
+    {
+        SaveDefaultFactoryCom(comName);
+        ConnectFactorySerial(comName);
+        UpdateFactorySerialLinkIndicator();
+    }
+}
 
+void CSparkUfsPdtDlg::RefreshFactoryComList()
+{
+    CComboBox* pCom = static_cast<CComboBox*>(GetDlgItem(IDC_CB_COM_SEL));
+    if (!pCom)
+    {
+        return;
+    }
 
+    pCom->ResetContent();
+    const auto ports = m_factorySerial.EnumDetailSerialPorts();
 
+    if (ports.empty())
+    {
+        int idx = pCom->AddString(_T("COM1"));
+        if (idx >= 0)
+        {
+            pCom->SetCurSel(idx);
+        }
+        return;
+    }
 
+    for (const auto& p : ports)
+    {
+        CString portName(p.port.c_str());
+        pCom->AddString(portName);
+    }
 
+    CString lastCom = GetDefaultFactoryCom();
+    int nSel = pCom->FindStringExact(-1, lastCom);
+    if (nSel >= 0)
+    {
+        pCom->SetCurSel(nSel);
+    }
+    else if (pCom->GetCount() > 0)
+    {
+        pCom->SetCurSel(0);
+    }
+}
 
+bool CSparkUfsPdtDlg::ConnectFactorySerial(const CString& comName)
+{
+    if (comName.IsEmpty())
+    {
+        m_factoryComConnected = false;
+        return false;
+    }
 
+    UINT baudRate = GetFactoryComBaudRate();
+    UINT byteSize = GetFactoryComByteSize();
+    UINT parity = GetFactoryComParity();
+    UINT stopBits = GetFactoryComStopBits();
 
+    CString mutableComName = comName;
+    bool result = m_factorySerial.Open(mutableComName, baudRate, byteSize, parity, stopBits);
+    m_factoryComConnected = result;
+    return result;
+}
 
+void CSparkUfsPdtDlg::UpdateFactorySerialLinkIndicator()
+{
+    if (CWnd* pIndicator = GetDlgItem(IDC_S_PIC_COM_LINKED))
+    {
+        pIndicator->Invalidate();
+    }
+}
 
+void CSparkUfsPdtDlg::DiagnosticSerialPortStatus()
+{
+    CString comName = GetDefaultFactoryCom();
+    CString msg;
+    msg.Format(_T("[DiagnosticSerialPortStatus] COM=%s, Baud=%u, Byte=%u, Parity=%u, Stop=%u\n"),
+        comName.GetString(), GetFactoryComBaudRate(), GetFactoryComByteSize(), GetFactoryComParity(), GetFactoryComStopBits());
+    OutputDebugString(msg);
+}
+
+CString CSparkUfsPdtDlg::GetDefaultFactoryCom() const
+{
+    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting && pBaseSetting->szComName[0])
+    {
+        return CString(pBaseSetting->szComName);
+    }
+    return _T("COM1");
+}
+
+void CSparkUfsPdtDlg::SaveDefaultFactoryCom(const CString& comName)
+{
+    if (comName.IsEmpty())
+    {
+        return;
+    }
+
+    auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting)
+    {
+        CStringA comNameA(comName);
+        strncpy_s(pBaseSetting->szComName, sizeof(pBaseSetting->szComName), comNameA, _TRUNCATE);
+    }
+
+    WritePrivateProfileString(_T("Base"), _T("ComName"), comName, GetBaseSettingIniPath());
+}
+
+UINT CSparkUfsPdtDlg::GetFactoryComBaudRate() const
+{
+    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting && pBaseSetting->uBaudRate > 0)
+    {
+        return pBaseSetting->uBaudRate;
+    }
+    return 9600;
+}
+
+UINT CSparkUfsPdtDlg::GetFactoryComByteSize() const
+{
+    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting && pBaseSetting->uByteSize > 0)
+    {
+        return pBaseSetting->uByteSize;
+    }
+    return 8;
+}
+
+UINT CSparkUfsPdtDlg::GetFactoryComParity() const
+{
+    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting)
+    {
+        return pBaseSetting->uParity;
+    }
+    return 0;
+}
+
+UINT CSparkUfsPdtDlg::GetFactoryComStopBits() const
+{
+    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    if (pBaseSetting)
+    {
+        return pBaseSetting->uStopBits;
+    }
+    return 0;
+}
+
+LRESULT CSparkUfsPdtDlg::OnFactoryCmdDownload(WPARAM wParam, LPARAM lParam)
+{
+    try
+    {
+        FACTORYCMD cmd = {};
+        if (!m_factorySerial.PopFactoryCmd(cmd))
+        {
+            return 0;
+        }
+
+        if (cmd.filePath[0] == '\0')
+        {
+            return 0;
+        }
+
+        CString path(cmd.filePath);
+        if (path.IsEmpty())
+        {
+            return 0;
+        }
+
+        if (LoadSettingFromPath(path, true))
+        {
+            SaveLastSettingPath(path);
+            m_factorySerial.FactorySendResponse(FACOTRY_CMD_DOWNLOAD);
+        }
+        else
+        {
+            m_factorySerial.FactorySendResponse(FACOTRY_CMD_UNKNOW_CMD);
+        }
+    }
+    catch (...)
+    {
+        OutputDebugString(_T("[OnFactoryCmdDownload] Exception\n"));
+    }
+    return 0;
+}

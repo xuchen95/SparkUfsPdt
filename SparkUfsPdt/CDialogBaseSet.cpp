@@ -21,6 +21,7 @@ void CDialogBaseSet::DoDataExchange(CDataExchange* pDX)
     DDX_Radio(pDX, IDC_RADIO_SET_HWID, m_portMappingSel);
     DDX_Radio(pDX, IDC_RADIO_SET_FORCE_ROM_UPIU, m_forceRomMode);
     DDX_Check(pDX, IDC_CHECK_SET_REMOTE_SN, m_snSeparateIni);
+    DDX_Check(pDX, IDC_CHECK_SET_FACTORY_CMD_LOG, m_enableFactoryCmdLog);
     DDX_Text(pDX, IDC_EDIT_SET_REMOTE_SN, m_remoteSnPath);
     DDX_Text(pDX, IDC_EDIT_SET_REPORT, m_reportPath);
 }
@@ -43,6 +44,12 @@ BOOL CDialogBaseSet::OnInitDialog()
         m_remoteSnPath = CString(pBase->szRemoteSnPath);
         m_reportPath = CString(pBase->szReportPath);
     }
+
+    TCHAR currentDirectory[MAX_PATH] = {};
+    GetCurrentDirectory(MAX_PATH, currentDirectory);
+    CString iniPath;
+    iniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
+    m_enableFactoryCmdLog = GetPrivateProfileInt(_T("Base"), _T("EnableFactoryCmdLog"), 1, iniPath) ? TRUE : FALSE;
 
     UpdateData(FALSE);
     return TRUE;
@@ -89,17 +96,13 @@ void CDialogBaseSet::OnOK()
     CString iniPath;
     iniPath.Format(_T("%s\\BoostSetting.ini"), currentDirectory);
 
+    // Save using the centralized function
+    SaveBaseSettingToIni(iniPath);
+
+    // Save additional factory command log setting
     CString value;
-    value.Format(_T("%d"), pBase->PortBaseSel);
-    WritePrivateProfileString(_T("Base"), _T("PortBaseSel"), value, iniPath);
-    value.Format(_T("%d"), pBase->PortMappingSel);
-    WritePrivateProfileString(_T("Base"), _T("PortMappingSel"), value, iniPath);
-    value.Format(_T("%d"), pBase->ForceRomMode);
-    WritePrivateProfileString(_T("Base"), _T("ForceRomMode"), value, iniPath);
-    value.Format(_T("%d"), pBase->bSnSeparateIni ? 1 : 0);
-    WritePrivateProfileString(_T("Base"), _T("SnSeparateIni"), value, iniPath);
-    WritePrivateProfileString(_T("Base"), _T("RemoteSnPath"), m_remoteSnPath, iniPath);
-    WritePrivateProfileString(_T("Base"), _T("ReportPath"), m_reportPath, iniPath);
+    value.Format(_T("%d"), m_enableFactoryCmdLog ? 1 : 0);
+    WritePrivateProfileString(_T("Base"), _T("EnableFactoryCmdLog"), value, iniPath);
 
     MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
     CDialogEx::OnOK();

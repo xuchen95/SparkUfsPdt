@@ -70,8 +70,11 @@
 #define IDC_BTN_SET_REMOTE_SN_SEL       1057
 #define IDC_EDIT_SET_REPORT             1058
 #define IDC_BTN_SET_REPORT_SEL          1059
-#define IDC_CHECK1                      1060
 #define IDC_CHECK_BURNIN_TEST           1060
+#define IDC_COMBO1                      1061
+#define IDC_CB_COM_SEL                  1061
+#define IDC_S_PIC_COM_LINKED            1062
+#define IDC_CHECK_SET_FACTORY_CMD_LOG   1063
 #define ID_SETTING_CONFIG               32771
 
 // Next default values for new objects
@@ -80,7 +83,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        201
 #define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1061
+#define _APS_NEXT_CONTROL_VALUE         1064
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

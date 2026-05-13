@@ -1,4 +1,5 @@
 #pragma once
+#include <shared_mutex>
 #include "../SparkLog/SparkLog.h"
 
 class CSparkUfsPdtDlg;
@@ -37,8 +38,17 @@ public:
     //Set Data functions for different stages, these functions are called by the stage functions to update the dialog with relevant information such as CID, SN, MDT, ISP info etc.
     static void SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData);
     static void SetMdtData(CSparkUfsPdtDlg* pDlg, char* pData);
-    static void GetIspString(CSparkUfsPdtDlg* pDlg, char* isp);
+    static void GetQCIspString(CSparkUfsPdtDlg* pDlg, char* isp);
+    static void GetIspMark(CSparkUfsPdtDlg* pDlg, char* isp);
 
-    
+    // Called from UI thread after g_UfsIsp is loaded to cache the ISP mark.
+    // Thread-safe: acquires exclusive write lock.
+    static void UpdateIspMark(const char* ispBuf, int ispFileSize);
+
+private:
+    static constexpr int ISP_MARK_SIZE = 16;
+    static char  s_ispMark[ISP_MARK_SIZE];
+    static bool  s_ispMarkValid;
+    static std::shared_mutex s_ispMarkMutex;
 };
 

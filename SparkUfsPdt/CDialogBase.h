@@ -63,6 +63,12 @@ typedef struct UFS_BASE_SETTING
 	BOOL bSnSeparateIni;
 	CHAR szRemoteSnPath[1024];
 	CHAR szReportPath[1024];
+	// Serial port parameters
+	CHAR szComName[64];
+	UINT uBaudRate;
+	UINT uByteSize;
+	UINT uParity;
+	UINT uStopBits;
 }ST_UFS_BASE_SETTING, * PST_UFS_BASE_SETTING;
 
 class CDialogBase :public CDialogEx
@@ -78,6 +84,7 @@ public:
 	static PST_UFS_BASE_SETTING GetSharedBaseSetting();
 	PST_UFS_BASE_SETTING GetBaseSetting() const;
 	static void LoadBaseSettingFromIni(const CString& path);
+	static void SaveBaseSettingToIni(const CString& path);
 	static void LoadRemoteSnToMainParam();
 
 protected:

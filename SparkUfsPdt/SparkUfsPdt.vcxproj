@@ -369,7 +369,6 @@
     <ClInclude Include="SerialDef.h" />
     <ClInclude Include="SparkUfsPdt.h" />
     <ClInclude Include="SparkUfsPdtDlg.h" />
-    <ClInclude Include="StateImp.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>

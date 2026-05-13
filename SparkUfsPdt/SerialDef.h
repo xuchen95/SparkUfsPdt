@@ -13,12 +13,13 @@ enum FactoryCmdType
 {
 	AUTO_DOWNLOAD = 0,
 	START_TEST,
-	TIME_OUT
+	TIME_OUT,
+	FACTORY_CMD_MAX
 };
 
 
 
-static char* FACTORY_CMD_STR[] =
+static const char* FACTORY_CMD_STR[] =
 {
 	"AUTO_DOWNLOAD",
 	"START_TEST",
@@ -26,7 +27,7 @@ static char* FACTORY_CMD_STR[] =
 	"NOOP"
 };
 
-static char* FACTORY_CMD_RESPONE[] =
+static const char* FACTORY_CMD_RESPONE[] =
 {
 	"DOWNLOADOK",
 	"TEST_DONE",
@@ -43,9 +44,11 @@ typedef struct SerialPortRecvHead
 #define UM_RECVDATA                 (WM_USER+0x801)
 
 #define MACHINE_DEVICE_CNT  (8)
+#define FACTORY_PATH_MAX    (1024)
 typedef struct FactoryCmd
 {
-	BYTE group;
-	BYTE device[MACHINE_DEVICE_CNT];
-	size_t cnt;
+	BYTE group = 0xFF;
+	BYTE device[MACHINE_DEVICE_CNT] = { 0 };
+	size_t cnt = 0;
+	char filePath[FACTORY_PATH_MAX] = { 0 };
 }FACTORYCMD, * PFACTORYCMD;

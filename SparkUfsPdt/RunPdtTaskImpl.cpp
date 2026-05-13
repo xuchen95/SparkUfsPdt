@@ -70,7 +70,6 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
             if ((ret = CImpState::MpStartStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::Write1024KIspMpStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-
             if (!bBurnInTest)
             {
                 if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
@@ -80,7 +79,7 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
             
             if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::VerifySnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            //if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
             if ((ret = CImpState::PowerOffStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
         } while (0);
     }

@@ -37,19 +37,51 @@ Serial::SerialImpl::SerialImpl (const string &port, unsigned long baudrate,
                                 flowcontrol_t flowcontrol)
   : port_ (port.begin(), port.end()), fd_ (INVALID_HANDLE_VALUE), is_open_ (false),
     baudrate_ (baudrate), parity_ (parity),
-    bytesize_ (bytesize), stopbits_ (stopbits), flowcontrol_ (flowcontrol)
+    bytesize_ (bytesize), stopbits_ (stopbits), flowcontrol_ (flowcontrol),
+    read_mutex (NULL), write_mutex (NULL)
 {
-  if (port_.empty () == false)
-    open ();
+  // Create mutexes before attempting to open port
   read_mutex = CreateMutex(NULL, false, NULL);
+  if (read_mutex == NULL) {
+    stringstream ss;
+    ss << "Failed to create read mutex: " << GetLastError();
+    THROW (IOException, ss.str().c_str());
+  }
+  
   write_mutex = CreateMutex(NULL, false, NULL);
+  if (write_mutex == NULL) {
+    CloseHandle(read_mutex);  // Clean up read mutex on write mutex creation failure
+    stringstream ss;
+    ss << "Failed to create write mutex: " << GetLastError();
+    THROW (IOException, ss.str().c_str());
+  }
+
+  // Attempt to open port only after both mutexes are successfully created
+  if (port_.empty() == false) {
+    try {
+      open();
+    } catch (...) {
+      // Clean up mutexes if open fails
+      CloseHandle(read_mutex);
+      CloseHandle(write_mutex);
+      read_mutex = NULL;
+      write_mutex = NULL;
+      throw;
+    }
+  }
 }
 
 Serial::SerialImpl::~SerialImpl ()
 {
   this->close();
-  CloseHandle(read_mutex);
-  CloseHandle(write_mutex);
+  if (read_mutex != NULL) {
+    CloseHandle(read_mutex);
+    read_mutex = NULL;
+  }
+  if (write_mutex != NULL) {
+    CloseHandle(write_mutex);
+    write_mutex = NULL;
+  }
 }
 
 void
@@ -259,6 +291,8 @@ Serial::SerialImpl::reconfigurePort ()
   // activate settings
   if (!SetCommState(fd_, &dcbSerialParams)){
     CloseHandle(fd_);
+    fd_ = INVALID_HANDLE_VALUE;  // Sync handle state
+    is_open_ = false;  // Sync open flag
     THROW (IOException, "Error setting serial port settings.");
   }
 
@@ -270,6 +304,9 @@ Serial::SerialImpl::reconfigurePort ()
   timeouts.WriteTotalTimeoutConstant = timeout_.write_timeout_constant;
   timeouts.WriteTotalTimeoutMultiplier = timeout_.write_timeout_multiplier;
   if (!SetCommTimeouts(fd_, &timeouts)) {
+    CloseHandle(fd_);
+    fd_ = INVALID_HANDLE_VALUE;  // Sync handle state on timeout setup failure
+    is_open_ = false;  // Sync open flag
     THROW (IOException, "Error setting timeouts.");
   }
 }
@@ -315,16 +352,70 @@ Serial::SerialImpl::available ()
 }
 
 bool
-Serial::SerialImpl::waitReadable (uint32_t /*timeout*/)
+Serial::SerialImpl::waitReadable (uint32_t timeout)
 {
-  THROW (IOException, "waitReadable is not implemented on Windows.");
-  return false;
+  if (!is_open_) {
+    throw PortNotOpenedException("Serial::waitReadable");
+  }
+  
+  // Use WaitCommEvent to wait for data availability
+  DWORD dwCommEvent = 0;
+  COMSTAT comstat = {0};
+  
+  // Set the event mask to monitor data reception
+  if (!SetCommMask(fd_, EV_RXCHAR)) {
+    THROW (IOException, "Error setting communication mask for waitReadable.");
+  }
+  
+  // Create a timeout value for WaitCommEvent
+  // Note: WaitCommEvent doesn't directly support timeout in synchronous mode
+  // We'll check available data with a timeout-based loop approach
+  DWORD start_time = GetTickCount();
+  
+  while (true) {
+    // Check if data is available
+    if (!ClearCommError(fd_, NULL, &comstat)) {
+      THROW (IOException, "Error checking serial port status in waitReadable.");
+    }
+    
+    if (comstat.cbInQue > 0) {
+      return true;  // Data is available
+    }
+    
+    // Check timeout
+    DWORD elapsed = GetTickCount() - start_time;
+    if (elapsed >= timeout) {
+      return false;  // Timeout occurred
+    }
+    
+    // Small sleep to avoid busy-waiting
+    Sleep(10);
+  }
 }
 
 void
-Serial::SerialImpl::waitByteTimes (size_t /*count*/)
+Serial::SerialImpl::waitByteTimes (size_t count)
 {
-  THROW (IOException, "waitByteTimes is not implemented on Windows.");
+  if (!is_open_) {
+    throw PortNotOpenedException("Serial::waitByteTimes");
+  }
+  
+  // Calculate the time needed for 'count' bytes at current baud rate
+  // Time per byte = 10 bits / baudrate (assuming 1 start, 8 data, 1 stop bit)
+  if (baudrate_ == 0) {
+    return;  // Avoid division by zero
+  }
+  
+  // Each byte takes approximately 10 bits to transmit
+  // Convert to milliseconds: (count * 10 * 1000) / baudrate
+  DWORD wait_ms = static_cast<DWORD>((count * 10 * 1000) / baudrate_);
+  
+  // Ensure at least 1ms wait
+  if (wait_ms == 0) {
+    wait_ms = 1;
+  }
+  
+  Sleep(wait_ms);
 }
 
 size_t
@@ -333,13 +424,27 @@ Serial::SerialImpl::read (uint8_t *buf, size_t size)
   if (!is_open_) {
     throw PortNotOpenedException ("Serial::read");
   }
-  DWORD bytes_read;
-  if (!ReadFile(fd_, buf, static_cast<DWORD>(size), &bytes_read, NULL)) {
-    stringstream ss;
-    ss << "Error while reading from the serial port: " << GetLastError();
-    THROW (IOException, ss.str().c_str());
+  
+  readLock();
+  try {
+    DWORD bytes_read;
+    if (!ReadFile(fd_, buf, static_cast<DWORD>(size), &bytes_read, NULL)) {
+      readUnlock();
+      stringstream ss;
+      ss << "Error while reading from the serial port: " << GetLastError();
+      THROW (IOException, ss.str().c_str());
+    }
+    readUnlock();
+    return (size_t) (bytes_read);
+  } catch (...) {
+    // Ensure lock is released even on exception
+    try {
+      readUnlock();
+    } catch (...) {
+      // Suppress exception during cleanup
+    }
+    throw;
   }
-  return (size_t) (bytes_read);
 }
 
 size_t
@@ -348,13 +453,27 @@ Serial::SerialImpl::write (const uint8_t *data, size_t length)
   if (is_open_ == false) {
     throw PortNotOpenedException ("Serial::write");
   }
-  DWORD bytes_written;
-  if (!WriteFile(fd_, data, static_cast<DWORD>(length), &bytes_written, NULL)) {
-    stringstream ss;
-    ss << "Error while writing to the serial port: " << GetLastError();
-    THROW (IOException, ss.str().c_str());
+  
+  writeLock();
+  try {
+    DWORD bytes_written;
+    if (!WriteFile(fd_, data, static_cast<DWORD>(length), &bytes_written, NULL)) {
+      writeUnlock();
+      stringstream ss;
+      ss << "Error while writing to the serial port: " << GetLastError();
+      THROW (IOException, ss.str().c_str());
+    }
+    writeUnlock();
+    return (size_t) (bytes_written);
+  } catch (...) {
+    // Ensure lock is released even on exception
+    try {
+      writeUnlock();
+    } catch (...) {
+      // Suppress exception during cleanup
+    }
+    throw;
   }
-  return (size_t) (bytes_written);
 }
 
 void

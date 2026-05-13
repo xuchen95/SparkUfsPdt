@@ -51,9 +51,6 @@
     <ClInclude Include="CDialogBaseSet.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="StateImp.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="PubFunc.h">
       <Filter>头文件</Filter>
     </ClInclude>
