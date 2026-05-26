@@ -13,3 +13,4 @@
 #define ERR_GEOMETRY_MISMATCH	  0xF0A
 #define ERR_CAPACITY_MISMATCH	  0xF0B
 #define ERR_SN_MISMATCH          0xF0C
+#define ERR_INVALID_DATA         0xF0D

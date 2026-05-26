@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "PubFunc.h"
 #include "CDialogBase.h"
+#include "DialogAdapter.h"
+#include "SettingsService.h"
 #include <cerrno>
 
 CString CPubFunc::IntToHex(UINT nValue, BOOL bUppercase, int nDigits)
@@ -182,7 +184,12 @@ bool CPubFunc::AcquireAndAdvanceSerialNumber(CString& allocatedSn)
 {
     allocatedSn.Empty();
 
-    PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting();
+    // Prefer going through the adapter to read base setting; fall back to default behavior
+    PST_UFS_BASE_SETTING pBase = nullptr;
+    // Some contexts may not have dialog pointer; keep existing behavior by reading the static
+    // base option via CDialogBase instance if possible through a temporary adapter.
+    ::DialogAdapter adapter(&SettingsService::Instance());
+    pBase = adapter.GetBaseSetting();
     if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
     {
         return false;

@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include <vector>
+#include <atomic>
 #include <queue>
 #include <functional>
 #include <future>
@@ -44,9 +45,12 @@ public:
         LeaveCriticalSection(&queueLock_);
 
         // release semaphore to wake all threads
-        for (size_t i = 0; i < workers_.size(); ++i)
+        if (taskSemaphore_)
         {
-            ReleaseSemaphore(taskSemaphore_, 1, NULL);
+            for (size_t i = 0; i < workers_.size(); ++i)
+            {
+                ReleaseSemaphore(taskSemaphore_, 1, NULL);
+            }
         }
 
         // wait for worker threads to exit
@@ -93,7 +97,8 @@ public:
         }
 
         // signal one worker thread
-        ReleaseSemaphore(taskSemaphore_, 1, NULL);
+        if (taskSemaphore_)
+            ReleaseSemaphore(taskSemaphore_, 1, NULL);
         return res;
     }
 
@@ -110,7 +115,7 @@ private:
         for (;;)
         {
             // wait for a task or stop signal
-            DWORD waitRes = WaitForSingleObject(taskSemaphore_, INFINITE);
+            DWORD waitRes = taskSemaphore_ ? WaitForSingleObject(taskSemaphore_, INFINITE) : WAIT_FAILED;
             if (waitRes != WAIT_OBJECT_0)
                 continue;
 

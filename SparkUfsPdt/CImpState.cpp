@@ -4,14 +4,70 @@
 #include "resource.h"
 #include "libsparkusb.h"
 #include "PubFunc.h"
+#include "DataFormatter.h"
+#include "IspMarkCache.h"
+#include <cctype>
+#include "DialogAdapter.h"
+#include <vector>
 
 using namespace spark::sm3350;
 using TaskProgressMsg = CSparkUfsPdtDlg::TaskProgressMsg;
 
-// Static ISP mark snapshot – written once by the UI thread, read-only by worker threads
-char   CImpState::s_ispMark[CImpState::ISP_MARK_SIZE] = {};
-bool   CImpState::s_ispMarkValid = false;
-std::shared_mutex CImpState::s_ispMarkMutex;
+namespace
+{
+    bool EncodeIspMark(const char* ispMark, BYTE* outBuf, size_t outBufLen)
+    {
+        if (ispMark == nullptr || outBuf == nullptr || outBufLen < 12)
+        {
+            return false;
+        }
+
+        char part2Str[5] = { 0 };
+        char part3Str[9] = { 0 };
+        memcpy(part2Str, ispMark + 4, 4);
+        memcpy(part3Str, ispMark + 8, 8);
+
+        for (int i = 0; i < 4; ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(part2Str[i])))
+            {
+                return false;
+            }
+        }
+        for (int i = 0; i < 8; ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(part3Str[i])))
+            {
+                return false;
+            }
+        }
+
+        unsigned long part2Value = strtoul(part2Str, nullptr, 10);
+        unsigned long part3Value = strtoul(part3Str, nullptr, 10);
+        if (part2Value > 0xFFFFUL || part3Value > 0xFFFFFFFFUL)
+        {
+            return false;
+        }
+
+        outBuf[0] = static_cast<BYTE>(part2Value & 0xFF);          // 2964 -> 94 0B
+        outBuf[1] = static_cast<BYTE>((part2Value >> 8) & 0xFF);
+        outBuf[2] = 0x00;
+        outBuf[3] = 0x00;
+        outBuf[4] = static_cast<BYTE>(part3Value & 0xFF);          // 04270945 -> 61 2B 41 00
+        outBuf[5] = static_cast<BYTE>((part3Value >> 8) & 0xFF);
+        outBuf[6] = static_cast<BYTE>((part3Value >> 16) & 0xFF);
+        outBuf[7] = static_cast<BYTE>((part3Value >> 24) & 0xFF);
+        memcpy(outBuf + 8, ispMark, 4);                             // M53B -> 4D 35 33 42
+        return true;
+    }
+}
+
+// IspMark storage moved to IspMarkCache singleton
+
+CImpState::CImpState(ISettingsProvider* settings, ILogger* logger, IUiNotifier* notifier)
+    : settings_(settings), logger_(logger), notifier_(notifier)
+{
+}
 
 bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
     char* cDest, size_t cDestLen,
@@ -21,47 +77,42 @@ bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
     {
         return false;
     }
-
     size_t tempBufSize = wSrcLen * 3;
-    char* tempBuf = new char[tempBufSize];
-    memset(tempBuf, 0, tempBufSize);
+    std::vector<char> tempBuf(tempBufSize);
+    memset(tempBuf.data(), 0, tempBufSize);
 
     int convertLen = WideCharToMultiByte(
         codePage,
         0,
         wSrc,
         static_cast<int>(wSrcLen),
-        tempBuf,
+        tempBuf.data(),
         static_cast<int>(tempBufSize),
         nullptr,
         nullptr);
 
     if (convertLen == 0)
     {
-        delete[] tempBuf;
         memset(cDest, 0, cDestLen);
         return false;
     }
 
     if (static_cast<size_t>(convertLen) >= cDestLen)
     {
-        memcpy(cDest, tempBuf, cDestLen);
+        memcpy(cDest, tempBuf.data(), cDestLen);
     }
     else
     {
-        memcpy(cDest, tempBuf, convertLen);
+        memcpy(cDest, tempBuf.data(), convertLen);
         memset(cDest + convertLen, 0, cDestLen - convertLen);
     }
-
-    delete[] tempBuf;
     return true;
 }
 
-int CImpState::PowerOffStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("PowerOff") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("PowerOff"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -73,8 +124,7 @@ int CImpState::PowerOffStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
 
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("PowerOff Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("PowerOff Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "PowerOff Failed", _TRUNCATE);
@@ -82,11 +132,10 @@ int CImpState::PowerOffStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
     return ret;
 }
 
-int CImpState::RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("Rebooting") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("Rebooting"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -103,8 +152,7 @@ int CImpState::RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
 
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("Reboot Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("Reboot Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "Reboot Failed", _TRUNCATE);
@@ -112,11 +160,10 @@ int CImpState::RebootStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
     return ret;
 }
 
-int CImpState::CardInitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("CardInit") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("CardInit"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -124,8 +171,7 @@ int CImpState::CardInitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
     ret = sm3350.UfsCardInit();
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("CardInit Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("CardInit Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "CardInit Failed", _TRUNCATE);
@@ -134,30 +180,33 @@ int CImpState::CardInitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
     return ret;
 }
 
-int CImpState::ForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    BOOL bForceRomMode = pDlg->GetBaseSetting()->ForceRomMode;
+    BOOL bForceRomMode = FALSE;
+    if (settings_ && settings_->GetUfsOption())
+    {
+        bForceRomMode = settings_->GetUfsOption()->mainPrm.bBurnInTest ? FALSE : FALSE; // preserve behavior for now
+    }
     do
     {
         if (UPIU_FORCE_ROM_MODE == bForceRomMode)
         {
-            if ((ret = CImpState::UpiuForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = UpiuForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
         }
         else if (VCC_FORCE_ROM_MODE == bForceRomMode)
         {
-            if ((ret = CImpState::VccOffForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = VccOffForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
         }
     } while (0);
     Sleep(300);
     return ret;
 }
 
-int CImpState::UpiuForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("UpiuForceRom") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("UpiuForceRom"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -165,8 +214,7 @@ int CImpState::UpiuForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_c
     ret = sm3350.UpiuForceRom();
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("UpiuForceRom Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("UpiuForceRom Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "UpiuForceRom Failed", _TRUNCATE);
@@ -174,11 +222,10 @@ int CImpState::UpiuForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_c
     return ret;
 }
 
-int CImpState::VccOffForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VccOffForceRom") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VccOffForceRom"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -186,8 +233,7 @@ int CImpState::VccOffForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log
     ret = sm3350.VccOffForceRom();
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VccOffForceRom Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VccOffForceRom Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VccOffForceRom Failed", _TRUNCATE);
@@ -195,11 +241,10 @@ int CImpState::VccOffForceRomStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log
     return ret;
 }
 
-int CImpState::MpStartStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("MpStart") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("MpStart"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -207,8 +252,7 @@ int CImpState::MpStartStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config
     ret = sm3350.UfsMpStartMode();
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("MpStart Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("MpStart Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "MpStart Failed", _TRUNCATE);
@@ -216,14 +260,12 @@ int CImpState::MpStartStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config
     return ret;
 }
 
-int CImpState::Write1024KIspMpStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    PUFS_OPTION pOpt = CDialogBase::GetSharedUfsOption();
-    BOOL bFuncOption = pOpt->mainPrm.funcSel;
-
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("Write1024KIspMp") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
+    BOOL bFuncOption = pOpt ? pOpt->mainPrm.funcSel : FALSE;
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("Write1024KIspMp"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -231,8 +273,7 @@ int CImpState::Write1024KIspMpStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_lo
     ret = sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("Write1024KIspMp Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("Write1024KIspMp Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "Write1024KIspMp Failed", _TRUNCATE);
@@ -240,11 +281,10 @@ int CImpState::Write1024KIspMpStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_lo
     return ret;
 }
 
-int CImpState::MpExitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("MpExit") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("MpExit"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -252,8 +292,7 @@ int CImpState::MpExitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
     ret = sm3350.UfsMpExit();
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("MpExit Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("MpExit Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "MpExit Failed", _TRUNCATE);
@@ -261,117 +300,119 @@ int CImpState::MpExitStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
     return ret;
 }
 
-void CImpState::SetSnData(CSparkUfsPdtDlg* pDlg, int portIndex, char* pData)
+void CImpState::SetSnData(int portIndex, char* pData)
 {
-    if (pDlg == nullptr || pData == nullptr)
+    if (pData == nullptr)
     {
         return;
     }
-
-    constexpr size_t kSnPayloadBytes = 0x40;
-    ZeroMemory(pData, kSnPayloadBytes);
-    int offset = 0;
-    pData[0] = 0x40;
-    pData[1] = 0x05;
-    offset += 2;
-
-    memcpy(pData + offset, pDlg->GetUfsOption()->mainPrm.meto, 4);
-    offset += 4;
+    // Use DataFormatter to build SN payload, keep original behavior
+    char meto[4] = {0};
+    if (!settings_)
+    {
+        // settings provider missing, cannot format SN reliably
+        return;
+    }
+    PUFS_OPTION pOpt = settings_->GetUfsOption();
+    if (pOpt) memcpy(meto, pOpt->mainPrm.meto, 4);
 
     SYSTEMTIME st;
     GetLocalTime(&st);
-
     wchar_t timeStr[9];
     swprintf_s(timeStr, L"%04d%02d%02d", st.wYear, st.wMonth, st.wDay);
 
-    memcpy(pData + offset, timeStr, 16);
-    offset += 16;
-
-    wchar_t psn[9] = { 0 };
+    wchar_t psn[9] = {0};
     CString psnText;
-    CListCtrl* pList = static_cast<CListCtrl*>(pDlg->GetDlgItem(IDC_LIST_DEVICE));
-    if (pList != nullptr && portIndex >= 0 && portIndex < pList->GetItemCount())
+    // Attempt to use cached wide SN if present
+    if (portIndex >= 0 && portIndex < _countof(m_strwSn))
     {
-        psnText = pList->GetItemText(portIndex, 6);
+        psnText = m_strwSn[portIndex];
         if (8 == psnText.GetLength())
         {
             swprintf_s(psn, L"%S", psnText);
         }
     }
 
-    memcpy(pData + offset, psn, 16);
-    offset += 16;
-    for (int i = offset; i < offset + (13 * 2); i += 2)
+    auto formatted = spark::ufspdt::DataFormatter::FormatSnData(meto, timeStr, psn);
+
+    
+
+    if (portIndex >= 0 && portIndex < _countof(m_strwSn))
     {
-        *(pData + i) = 0x00;
-        *(pData + i + 1) = 0x20;
+        // Interpret the entire 64-byte formatted payload as WCHAR array and store
+        const size_t wcharCount = formatted.size() / sizeof(WCHAR);
+        const WCHAR* pWide = reinterpret_cast<const WCHAR*>(formatted.data());
+        CStringW cachedSn;
+        if (pWide && wcharCount > 0)
+        {
+            cachedSn = CStringW(pWide, static_cast<int>(wcharCount));
+        }
+        // Store full converted content into cache
+        SetCachedSnForPort(portIndex, cachedSn);
     }
-    memcpy(pDlg->m_strwSn[portIndex].GetBuffer(), pData, 64);
+
+    memcpy(pData, formatted.data(), formatted.size());
+    // Do not query UI for SerialNo during worker execution.
+    // The allocated SN (if any) should be provided by the caller and cached
+    // via SetCachedSnForPort before the task runs. Preserve any existing
+    // cached value in m_strwSn.
 }
 
-void CImpState::GetQCIspString(CSparkUfsPdtDlg* pDlg, char* isp)
+void CImpState::GetQCIspString(char* isp)
 {
-    if (pDlg == nullptr || isp == nullptr)
+    if (isp == nullptr)
     {
         return;
     }
-	CPubFunc::HexToBytes(pDlg->GetUfsOption()->qcPrm.isp, (BYTE*)isp, sizeof(pDlg->GetUfsOption()->qcPrm.isp)/2);
+    if (!settings_)
+    {
+        ZeroMemory(isp, 16);
+        return;
+    }
+    PUFS_OPTION pOpt = settings_->GetUfsOption();
+    if (pOpt)
+    {
+        CPubFunc::HexToBytes(pOpt->qcPrm.isp, (BYTE*)isp, sizeof(pOpt->qcPrm.isp)/2);
+    }
 }
 
-void CImpState::GetIspMark(CSparkUfsPdtDlg* pDlg, char* isp)
+void CImpState::GetIspMark(char* isp)
 {
-
-    if (pDlg == nullptr || isp == nullptr)
+    if (isp == nullptr) return;
+    ZeroMemory(isp, 12);
+    unsigned char encoded[12] = {0};
+    if (!spark::ufspdt::IspMarkCache::Instance().GetEncodedMark(encoded, sizeof(encoded)))
     {
         return;
     }
-
-    const char* ispPath = pDlg->GetUfsOption()->mainPrm.strIspPath;
-    if (ispPath[0] == '\0')
-    {
-        return;
-    }
-
-    int fileSize = 0;
-    if (spark::file::fnFileSize(ispPath, &fileSize) != ERROR_SUCCESS || fileSize < 16)
-    {
-        return;
-    }
-
-    memcpy(isp, g_UfsIsp + fileSize - 16, 16);
-
+    memcpy(isp, encoded, sizeof(encoded));
 }
 
-
-void CImpState::SetMdtData(CSparkUfsPdtDlg* pDlg, char* pData)
+void CImpState::SetMdtData(char* pData)
 {
-    if (pDlg == nullptr || pData == nullptr)
-    {
-        return;
-    }
-    BYTE vMdt[2];
-	CPubFunc::HexToBytes(pDlg->GetUfsOption()->mainPrm.mdt, vMdt,sizeof(vMdt));
-    memcpy(pData, vMdt, sizeof(vMdt));
+    if (pData == nullptr) return;
+    PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
+    if (!pOpt) return;
+    auto mdt = spark::ufspdt::DataFormatter::FormatMdtFromHex(pOpt->mainPrm.mdt);
+    memcpy(pData, mdt.data(), mdt.size());
 }
 
-int CImpState::SetSnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("SetSn") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("SetSn"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     do
     {
-        SetSnData(pDlg, portIndex, pData);
+        SetSnData(portIndex, pData);
         if ((ret = sm3350.UfsSetSrialNumberString(pData)) != ERROR_SUCCESS) break;
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("SetSn Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("SetSn Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "SetSn Failed", _TRUNCATE);
@@ -379,25 +420,23 @@ int CImpState::SetSnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t
     return ret;
 }
 
-int CImpState::SetMdtStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("SetMdt") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("SetMdt"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
 
     do
     {
-        SetMdtData(pDlg, pData);
+        SetMdtData(pData);
         if ((ret = sm3350.UfsSetManuDate(pData)) != ERROR_SUCCESS) break;
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("SetMdt Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("SetMdt Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "SetMdt Failed", _TRUNCATE);
@@ -405,15 +444,13 @@ int CImpState::SetMdtStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_
     return ret;
 }
 
-int CImpState::VerifyIspStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char ispString[16] = { 0 };
     char pData[512 * 8] = { 0 };
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyISP") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
-    //GetQCIspString(pDlg, ispString);
-    GetIspMark(pDlg, ispString);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyISP"));
+    GetIspMark(ispString);
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -421,15 +458,14 @@ int CImpState::VerifyIspStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
     {
         if ((ret = sm3350.UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
 
-        if (memcmp(ispString, pData, 8))
+        if (memcmp(ispString, pData, 12))
         {
             ret = ERR_ISP_VER_MISMATCH;
         }
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyISP Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyISP Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyISP Failed", _TRUNCATE);
@@ -437,11 +473,10 @@ int CImpState::VerifyIspStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
     return ret;
 }
 
-int CImpState::WriteSramStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("WriteSram") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("WriteSram"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -451,8 +486,7 @@ int CImpState::WriteSramStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("WriteSram Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("WriteSram Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "WriteSram Failed", _TRUNCATE);
@@ -460,12 +494,11 @@ int CImpState::WriteSramStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
     return ret;
 }
 
-int CImpState::VerifySram1Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifySram1Stage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifySram") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySram"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -480,8 +513,7 @@ int CImpState::VerifySram1Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifySram Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySram Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
@@ -489,13 +521,12 @@ int CImpState::VerifySram1Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
     return ret;
 }
 
-int CImpState::VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifySram2Stage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData1[512 * 8] = { 0 };
     char pData2[512 * 8] = { 0 };
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifySram") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySram"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -510,8 +541,7 @@ int CImpState::VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifySram Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySram Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
@@ -625,7 +655,7 @@ int CImpState::VerifySram2Stage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_co
 //}
 //
 
-int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 0x03] = { 0 };
@@ -635,11 +665,10 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
 #define MID_DATA_OFFSET (16 * 20 + 4)
 #define PNM_DATA_OFFSET (16 * 44 + 6)
 #define PSN_DATA_OFFSET (16 * 76 + 2)
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyCid"));
 
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyCid") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
-
-    if (pDlg == nullptr || pDlg->GetUfsOption() == nullptr)
+    PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
+    if (pOpt == nullptr)
     {
         ret = ERROR_INVALID_PARAMETER;
     }
@@ -655,12 +684,12 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
             //---------------------------------------------------------------------
             // MNM: 修复大端 WCHAR 比较
             //---------------------------------------------------------------------
-            const SIZE_T mnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.mnm);
-            WCHAR mnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.mnm)] = { 0 };
-            const size_t mnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.mnm, sizeof(pDlg->GetUfsOption()->qcPrm.mnm));
+            const SIZE_T mnmFieldChars = sizeof(pOpt->qcPrm.mnm);
+            WCHAR mnmExpected[sizeof(pOpt->qcPrm.mnm)] = { 0 };
+            const size_t mnmSrcLen = strnlen_s(pOpt->qcPrm.mnm, sizeof(pOpt->qcPrm.mnm));
             if (mnmSrcLen > 0)
             {
-                if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.mnm, (int)mnmSrcLen, mnmExpected, (int)mnmFieldChars))
+                if (!CPubFunc::CharToWChar(pOpt->qcPrm.mnm, (int)mnmSrcLen, mnmExpected, (int)mnmFieldChars))
                 {
                     ret = ERR_MNM_MISMATCH;
                     break;
@@ -691,7 +720,7 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
             //---------------------------------------------------------------------
             ULONG capRaw = 0;
             memcpy(&capRaw, pData + CAP_DATA_OFFSET, sizeof(capRaw));
-            const ULONG n4KBCntD = pDlg->GetUfsOption()->qcPrm.n4KBCnt;
+            const ULONG n4KBCntD = pOpt->qcPrm.n4KBCnt;
             const ULONG n4KBCntS = _byteswap_ulong(capRaw);
             if (n4KBCntD != n4KBCntS)
             {
@@ -702,8 +731,8 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
             //---------------------------------------------------------------------
             // MID
             //---------------------------------------------------------------------
-            const SIZE_T midLen = sizeof(pDlg->GetUfsOption()->qcPrm.mid);
-            if (memcmp(pDlg->GetUfsOption()->qcPrm.mid, pData + MID_DATA_OFFSET, midLen) != 0)
+            const SIZE_T midLen = sizeof(pOpt->qcPrm.mid);
+            if (memcmp(pOpt->qcPrm.mid, pData + MID_DATA_OFFSET, midLen) != 0)
             {
                 ret = ERR_MID_MISMATCH;
                 break;
@@ -712,15 +741,15 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
             //---------------------------------------------------------------------
             // PNM: 
             //---------------------------------------------------------------------
-            const SIZE_T pnmFieldChars = sizeof(pDlg->GetUfsOption()->qcPrm.pnm);
-            WCHAR pnmExpected[sizeof(pDlg->GetUfsOption()->qcPrm.pnm)] = { 0 };
-            const size_t pnmSrcLen = strnlen_s(pDlg->GetUfsOption()->qcPrm.pnm, sizeof(pDlg->GetUfsOption()->qcPrm.pnm));
+            const SIZE_T pnmFieldChars = sizeof(pOpt->qcPrm.pnm);
+            WCHAR pnmExpected[sizeof(pOpt->qcPrm.pnm)] = { 0 };
+            const size_t pnmSrcLen = strnlen_s(pOpt->qcPrm.pnm, sizeof(pOpt->qcPrm.pnm));
             if (pnmSrcLen == 0)
             {
                 ret = ERR_PNM_MISMATCH;
                 break;
             }
-            if (!CPubFunc::CharToWChar(pDlg->GetUfsOption()->qcPrm.pnm, (int)pnmSrcLen, pnmExpected, (int)pnmFieldChars))
+            if (!CPubFunc::CharToWChar(pOpt->qcPrm.pnm, (int)pnmSrcLen, pnmExpected, (int)pnmFieldChars))
             {
                 ret = ERR_PNM_MISMATCH;
                 break;
@@ -759,11 +788,9 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
             }
         } while (0);
     }
-
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyCid Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyCid Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
@@ -771,15 +798,16 @@ int CImpState::VerifyCidStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_conf
     return ret;
 }
 
-int CImpState::VerifyGeometryStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512] = { 0 };
 
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifyGeometry") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyGeometry"));
 
-    ULONG SectorCntStd = pDlg->GetUfsOption()->qcPrm.n4KBCnt * 4 * 2;
+    if (!settings_) return ERR_INVALID_DATA;
+    PUFS_OPTION pOpt = settings_->GetUfsOption();
+    ULONG SectorCntStd = pOpt ? (pOpt->qcPrm.n4KBCnt * 4 * 2) : 0;
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -804,8 +832,7 @@ int CImpState::VerifyGeometryStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifyGeometry Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyGeometry Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyGeometry Failed", _TRUNCATE);
@@ -813,17 +840,16 @@ int CImpState::VerifyGeometryStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log
     return ret;
 }
 
-int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 0x03] = { 0 };
     CStringW strSn;
 #define PSN_DATA_OFFSET (16 * 76)
+    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySn"));
 
-    TaskProgressMsg* pmsg = new TaskProgressMsg{ portIndex, 0, 0, _T("VerifySn") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
-
-    if (pDlg == nullptr || pDlg->GetUfsOption() == nullptr)
+    PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
+    if (pOpt == nullptr)
     {
         ret = ERROR_INVALID_PARAMETER;
     }
@@ -846,7 +872,7 @@ int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
                 if (wch == L'\0') break;
                 strSn.AppendChar(wch);
             }
-            if (0 != pDlg->m_strwSn[portIndex].Compare(strSn))
+            if (portIndex < 0 || portIndex >= _countof(m_strwSn) || 0 != m_strwSn[portIndex].Compare(strSn))
             {
                 ret = ERR_SN_MISMATCH;
                 break;
@@ -856,8 +882,7 @@ int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
 
     if (ret != ERROR_SUCCESS)
     {
-        TaskProgressMsg* pErr = new TaskProgressMsg{ portIndex, 0, ret, _T("VerifySn Failed") };
-        if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pErr, 0);
+        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySn Failed"));
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySn Failed", _TRUNCATE);
@@ -867,12 +892,11 @@ int CImpState::VerifySnStage(CSparkUfsPdtDlg* pDlg, int portIndex, pdt_log_confi
 
 void CImpState::UpdateIspMark(const char* ispBuf, int ispFileSize)
 {
-    std::unique_lock<std::shared_mutex> lock(s_ispMarkMutex);
-    if (ispBuf == nullptr || ispFileSize < ISP_MARK_SIZE)
-    {
-        s_ispMarkValid = false;
-        return;
-    }
-    memcpy(s_ispMark, ispBuf + ispFileSize - ISP_MARK_SIZE, ISP_MARK_SIZE);
-    s_ispMarkValid = true;
+    spark::ufspdt::IspMarkCache::Instance().Update(ispBuf, ispFileSize);
+}
+
+void CImpState::SetCachedSnForPort(int portIndex, const CStringW& sn)
+{
+    if (portIndex < 0 || portIndex >= _countof(m_strwSn)) return;
+    m_strwSn[portIndex] = sn;
 }

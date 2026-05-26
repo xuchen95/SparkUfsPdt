@@ -9,6 +9,7 @@
 #include "CSerialPort.h"
 #include "SerialDef.h"
 extern char g_UfsIsp[UFS_ISP_SIZE];
+#include "CImpState.h"
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogBase
@@ -60,16 +61,19 @@ public:
     afx_msg void OnCbnSelchangeCbComSel();
 
     // Run PDT for a specific port index (0-based) and report progress to UI
-    int RunPdtTask(int portIndex);
+    int RunPdtTask(int portIndex, const CString& allocatedSn = CString());
 
 	// Static thread pool shared by dialog -- destroyed on dialog close to exit threads safely
 	static std::unique_ptr<class ThreadPool> s_pool;
 
     // Custom message for worker threads to report progress to the UI thread.
     static const UINT WM_TASK_PROGRESS = (WM_USER + 0x65);
+    // Synchronous request from worker thread to retrieve SerialNo text for a port.
+    static const UINT WM_GET_PORT_SN = (WM_USER + 0x70);
     afx_msg LRESULT OnTaskProgress(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFactoryCmdDownload(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnGetPortSn(WPARAM wParam, LPARAM lParam);
 
     // Shared progress message structure used between worker code and UI handler
     struct TaskProgressMsg {
@@ -89,8 +93,8 @@ public:
     // Implementation entry point moved to a separate compilation unit. The
     // wrapper methods in the dialog call this function which receives the
     // port index and a pointer to the dialog instance for UI notifications.
-    friend int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
-    friend int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg);
+    friend int RunFtTaskImpl(int portIndex, CImpState* state);
+    friend int RunQcTaskImpl(int portIndex, CImpState* state);
 
     void CreateListViewColumns();
     void InitListViewItems();

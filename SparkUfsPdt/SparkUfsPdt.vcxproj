@@ -48,6 +48,7 @@
     <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
     <UseOfMfc>Static</UseOfMfc>
+    <EnableASAN>false</EnableASAN>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_XP|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -361,12 +362,21 @@
     <ClInclude Include="CDialogSetting.h" />
     <ClInclude Include="CImpState.h" />
     <ClInclude Include="CSerialPort.h" />
+    <ClInclude Include="DataFormatter.h" />
+    <ClInclude Include="DialogAdapter.h" />
     <ClInclude Include="ErrorCode.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="ILogger.h" />
+    <ClInclude Include="ISettingsProvider.h" />
+    <ClInclude Include="IspMarkCache.h" />
+    <ClInclude Include="IUiNotifier.h" />
+    <ClInclude Include="libsparkusb.h" />
+    <ClInclude Include="MemoryLeakHelper.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PubFunc.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SerialDef.h" />
+    <ClInclude Include="SettingsService.h" />
     <ClInclude Include="SparkUfsPdt.h" />
     <ClInclude Include="SparkUfsPdtDlg.h" />
     <ClInclude Include="targetver.h" />
@@ -379,6 +389,9 @@
     <ClCompile Include="CDialogSetting.cpp" />
     <ClCompile Include="CImpState.cpp" />
     <ClCompile Include="CSerialPort.cpp" />
+    <ClCompile Include="DataFormatter.cpp" />
+    <ClCompile Include="IspMarkCache.cpp" />
+    <ClCompile Include="MemoryLeakHelper.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_XP|x64'">Create</PrecompiledHeader>
@@ -391,9 +404,11 @@
     </ClCompile>
     <ClCompile Include="PubFunc.cpp" />
     <ClCompile Include="RunPdtTaskImpl.cpp" />
+    <ClCompile Include="SettingsService.cpp" />
     <ClCompile Include="SparkUfsPdt.cpp" />
     <ClCompile Include="SparkUfsPdtDlg.cpp" />
     <ClCompile Include="StateImp.cpp" />
+    <ClCompile Include="tests\unit_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SparkUfsPdt.rc" />
@@ -403,6 +418,7 @@
     <None Include="res\SparkUfsPdt.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\icon1.ico" />
     <Image Include="res\SparkUfsPdt.ico" />
   </ItemGroup>
   <ItemGroup>

@@ -8,6 +8,7 @@
 #include "libsparkusb.h"
 #include "../SparkLog/SparkLog.h"
 #include "CImpState.h"
+#include "DialogAdapter.h"
 
 using namespace spark::sm3350;
 using TaskProgressMsg = CSparkUfsPdtDlg::TaskProgressMsg;
@@ -40,7 +41,7 @@ void CSparkUfsPdtDlg::AppendLogLine(const CString& line)
     LeaveCriticalSection(&g_logLock);
 }
 
-int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+int RunFtTaskImpl(int portIndex, CImpState* state)
 {
     DWORD tStart = GetTickCount();
     int ret = ERROR_SUCCESS;
@@ -50,7 +51,14 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
-    BOOL bBurnInTest = pDlg->GetUfsOption()->mainPrm.bBurnInTest;
+    // Use DialogAdapter to access settings/logger/ui and create a CImpState instance
+    if (!state) return ERROR_INVALID_PARAMETER;
+    ISettingsProvider* settings = state->GetSettings();
+    IUiNotifier* notifier = state->GetNotifier();
+    ILogger* logger = state->GetLogger();
+
+    BOOL bBurnInTest = FALSE;
+    if (settings && settings->GetUfsOption()) bBurnInTest = settings->GetUfsOption()->mainPrm.bBurnInTest;
 
     lg.ufs_port = (uint8_t)portIndex;
     strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
@@ -65,22 +73,21 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     {
         do
         {
-            if ((ret = CImpState::RebootStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::MpStartStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::Write1024KIspMpStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->RebootStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->ForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->MpStartStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->Write1024KIspMpStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->MpExitStage(portIndex, lg)) != ERROR_SUCCESS) break;
             if (!bBurnInTest)
             {
-                if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-                if ((ret = CImpState::SetMdtStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-                if ((ret = CImpState::SetSnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->SetMdtStage(portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->SetSnStage(portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->VerifySnStage(portIndex, lg)) != ERROR_SUCCESS) break;
+                if ((ret = state->VerifyIspStage(portIndex, lg)) != ERROR_SUCCESS) break;
             }
-            
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifySnStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::PowerOffStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->PowerOffStage(portIndex, lg)) != ERROR_SUCCESS) break;
         } while (0);
     }
     else
@@ -102,13 +109,13 @@ int RunFtTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     SparkLog_EnqueuePdtLog(lg);
 
-    TaskProgressMsg* finalMsg = new TaskProgressMsg{ portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)finalMsg, 0);
+    // Notify UI via adapter
+    if (notifier) notifier->PostTaskProgress(portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed"));
 
     return ret;
 }
 
-int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
+int RunQcTaskImpl(int portIndex, CImpState* state)
 {
     DWORD tStart = GetTickCount();
     int ret = ERROR_SUCCESS;
@@ -118,7 +125,14 @@ int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
-    BOOL bForceRomMode = pDlg->GetBaseSetting()->ForceRomMode;
+    if (!state) return ERROR_INVALID_PARAMETER;
+    // For QC path prefer base setting via adapter from the calling dialog state
+    PST_UFS_BASE_SETTING pBase = nullptr;
+    if (state && state->GetSettings())
+    {
+        pBase = state->GetSettings()->GetBaseSetting();
+    }
+    BOOL bForceRomMode = pBase ? pBase->ForceRomMode : FALSE;
     lg.ufs_port = (uint8_t)portIndex;
     strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
 
@@ -132,22 +146,22 @@ int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
     {
         do
         {
-            if ((ret = CImpState::RebootStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifyCidStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifyIspStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::ForceRomStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::MpStartStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::WriteSramStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::MpExitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifySram1Stage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifySram2Stage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::CardInitStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::VerifyGeometryStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
-            if ((ret = CImpState::PowerOffStage(pDlg, portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->RebootStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->ForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->VerifyCidStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->VerifyIspStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->ForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->MpStartStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->WriteSramStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->MpExitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->VerifySram1Stage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->VerifySram2Stage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->CardInitStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->VerifyGeometryStage(portIndex, lg)) != ERROR_SUCCESS) break;
+            if ((ret = state->PowerOffStage(portIndex, lg)) != ERROR_SUCCESS) break;
         } while (0);
     }
     else
@@ -169,8 +183,9 @@ int RunQcTaskImpl(int portIndex, CSparkUfsPdtDlg* pDlg)
 
     SparkLog_EnqueuePdtLog(lg);
 
-    TaskProgressMsg* finalMsg = new TaskProgressMsg{ portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed") };
-    if (pDlg) pDlg->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)finalMsg, 0);
+    // Notify UI via adapter
+    IUiNotifier* notifierQc = state->GetNotifier();
+    if (notifierQc) notifierQc->PostTaskProgress(portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed"));
 
     return ret;
 }

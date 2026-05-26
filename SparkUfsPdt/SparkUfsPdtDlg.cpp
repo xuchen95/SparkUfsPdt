@@ -13,6 +13,7 @@
 #include "PubFunc.h"
 #include "../SparkLog/SparkLog.h"
 #include "CImpState.h"
+#include "DialogAdapter.h"
 #include <cerrno>
 
 
@@ -57,6 +58,7 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
 	ON_MESSAGE(FACOTRY_CMD_DOWNLOAD, &CSparkUfsPdtDlg::OnFactoryCmdDownload)
 	ON_MESSAGE(FACOTRY_CMD_START_TEST, &CSparkUfsPdtDlg::OnFactoryCmdStartTest)
+    ON_MESSAGE(WM_USER+0x70, &CSparkUfsPdtDlg::OnGetPortSn)
 	ON_CBN_SELCHANGE(IDC_CB_COM_SEL, &CSparkUfsPdtDlg::OnCbnSelchangeCbComSel)
 END_MESSAGE_MAP()
 
@@ -77,8 +79,11 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     SetWindowText(title);
 
     CString baseIniPath = GetBaseSettingIniPath();
-    CDialogBase::LoadBaseSettingFromIni(baseIniPath);
-    if (PST_UFS_BASE_SETTING pBase = CDialogBase::GetSharedBaseSetting())
+    // Load centralized base settings at startup
+    SettingsService::Instance().LoadBaseSettingFromIni(baseIniPath);
+    ::DialogAdapter adapter(this);
+    PST_UFS_BASE_SETTING pBase = adapter.GetBaseSetting();
+    if (pBase)
     {
         if (pBase->szReportPath[0] != '\0')
         {
@@ -98,11 +103,12 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 		pWnd->ModifyStyle(SS_LEFT | SS_RIGHT, SS_CENTER | SS_CENTERIMAGE);
 	}
 
-	m_pdtNameBrush.DeleteObject();
-	m_pdtNameBrush.CreateSolidBrush(RGB(255, 255, 255));
-    m_factoryComLinkedBrushGreen.DeleteObject();
+    // initialize brushes/fonts safely (DeleteObject called before Create)
+    if (m_pdtNameBrush.GetSafeHandle()) m_pdtNameBrush.DeleteObject();
+    m_pdtNameBrush.CreateSolidBrush(RGB(255, 255, 255));
+    if (m_factoryComLinkedBrushGreen.GetSafeHandle()) m_factoryComLinkedBrushGreen.DeleteObject();
     m_factoryComLinkedBrushGreen.CreateSolidBrush(RGB(0, 200, 0));
-    m_factoryComLinkedBrushRed.DeleteObject();
+    if (m_factoryComLinkedBrushRed.GetSafeHandle()) m_factoryComLinkedBrushRed.DeleteObject();
     m_factoryComLinkedBrushRed.CreateSolidBrush(RGB(220, 0, 0));
 	m_settingPath.Empty();
 	UpdatePdtNameText();
@@ -266,7 +272,7 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
 
 // Wrapper methods that forward to the implementation in RunPdtTaskImpl.cpp
 
-int CSparkUfsPdtDlg::RunPdtTask(int portIndex)
+int CSparkUfsPdtDlg::RunPdtTask(int portIndex, const CString& allocatedSn /*= CString()*/)
 {
     bool isQcConfig = false;
     if (!m_settingPath.IsEmpty())
@@ -276,12 +282,22 @@ int CSparkUfsPdtDlg::RunPdtTask(int portIndex)
         isQcConfig = (upperPath.Find(_T("QC")) >= 0);
     }
 
+    ::DialogAdapter dlgAdapter(this);
+
+    CImpState state(&dlgAdapter, &dlgAdapter, &dlgAdapter);
+    // If caller provided an allocated SN for this port, cache it into the task state
+    if (!allocatedSn.IsEmpty())
+    {
+        // convert UTF-8/ANSI CString to wide CStringW explicitly
+        CStringW snW = CA2W(allocatedSn);
+        state.SetCachedSnForPort(portIndex, snW);
+    }
     if (isQcConfig)
     {
-        return RunQcTaskImpl(portIndex, this);
+        return RunQcTaskImpl(portIndex, &state);
     }
 
-    return RunFtTaskImpl(portIndex, this);
+    return RunFtTaskImpl(portIndex, &state);
 }
 
 // UI thread message handler for progress updates
@@ -375,7 +391,6 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         }
     }
 
-    delete msg;
     return 0;
 }
 
@@ -384,7 +399,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     // Start PDT tasks for all Ready ports. Create the thread pool if
     // necessary and enqueue a task per Ready row. Errors during enqueue
     // are logged but do not abort other tasks.
-
+    CString snAllocated;
     int totalReady = 0;
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     if (pList)
@@ -439,7 +454,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
             {
                 if (isFt3Config)
                 {
-                    CString snAllocated;
+                    
                     if (CPubFunc::AcquireAndAdvanceSerialNumber(snAllocated))
                     {
 
@@ -450,11 +465,14 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
                         CString err;
                         err.Format(_T("Read/advance SerialNumber failed for port %d"), i + 1);
                         AppendLogLine(err);
+						return; // abort starting tasks if we cannot get a valid SN for FT3 config
                     }
                 }
 
                 try {
-                    s_pool->enqueue([this, i]() { return this->RunPdtTask(i); });
+                    // capture allocated SN from list control to pass into task
+                    //CString snAllocated = pList->GetItemText(i, 6);
+                    s_pool->enqueue([this, i, snAllocated]() { return this->RunPdtTask(i, snAllocated); });
                     startedAnyTask = true;
                     enqueuedCount++;
                 }
@@ -500,6 +518,24 @@ void CSparkUfsPdtDlg::OnDestroy()
     {
         DeleteCriticalSection(&g_logLock);
         g_logLockInited = false;
+    }
+
+    // Delete GDI objects created by this dialog to avoid leaks
+    if (m_pdtNameFont.GetSafeHandle())
+    {
+        m_pdtNameFont.DeleteObject();
+    }
+    if (m_pdtNameBrush.GetSafeHandle())
+    {
+        m_pdtNameBrush.DeleteObject();
+    }
+    if (m_factoryComLinkedBrushGreen.GetSafeHandle())
+    {
+        m_factoryComLinkedBrushGreen.DeleteObject();
+    }
+    if (m_factoryComLinkedBrushRed.GetSafeHandle())
+    {
+        m_factoryComLinkedBrushRed.DeleteObject();
     }
 
     m_pdtNameBrush.DeleteObject();
@@ -772,7 +808,28 @@ LRESULT CSparkUfsPdtDlg::OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam)
     {
         OutputDebugString(_T("[OnFactoryCmdStartTest] Unknown exception\n"));
     }
+
     return 0;
+}
+
+
+LRESULT CSparkUfsPdtDlg::OnGetPortSn(WPARAM wParam, LPARAM lParam)
+{
+    // wParam: portIndex, lParam: pointer to CStringW buffer allocated by caller
+    int portIndex = static_cast<int>(wParam);
+    CStringW* pOut = reinterpret_cast<CStringW*>(lParam);
+    if (!pOut) return 0;
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (!pList) return 0;
+    CString portName; portName.Format(_T("Port %d"), portIndex + 1);
+    LVFINDINFO fi = {0}; fi.flags = LVFI_STRING; fi.psz = portName;
+    int idx = pList->FindItem(&fi);
+    if (idx >= 0)
+    {
+        CString sn = pList->GetItemText(idx, 6);
+        *pOut = sn;
+    }
+    return 1;
 }
 
 void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
@@ -792,7 +849,8 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
     }
 
     CString path = dlg.GetPathName();
-    PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
+    ::DialogAdapter settingsAdapter(this);
+    PUFS_OPTION pOption = settingsAdapter.GetUfsOption();
     if (!CDialogSetting::LoadFromIni(path, pOption))
     {
         MessageBox(_T("Load failed."), _T("Setting"), MB_ICONERROR);
@@ -811,6 +869,22 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
 
     LoadSettingFromPath(path, true);
     SaveLastSettingPath(path);
+
+    CComboBox* pCom = static_cast<CComboBox*>(GetDlgItem(IDC_CB_COM_SEL));
+    if (pCom)
+    {
+        int nSel = pCom->GetCurSel();
+        if (nSel >= 0)
+        {
+            CString comName;
+            pCom->GetLBText(nSel, comName);
+            if (!comName.IsEmpty())
+            {
+                ::DialogAdapter settingsAdapter(this);
+                settingsAdapter.SaveDefaultFactoryCom(comName);
+            }
+        }
+    }
 }
 
 CString CSparkUfsPdtDlg::GetBaseSettingIniPath() const
@@ -839,7 +913,8 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
         return false;
     }
 
-    PUFS_OPTION pOption = CDialogBase::GetSharedUfsOption();
+    ::DialogAdapter settingsAdapter(this);
+    PUFS_OPTION pOption = settingsAdapter.GetUfsOption();
     if (!CDialogSetting::LoadFromIni(path, pOption))
     {
         if (showError)
@@ -896,6 +971,22 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
                     spark::file::fnFileSize(CStringA(configuredPath), &ispFileSize);
                     CImpState::UpdateIspMark(g_UfsIsp, ispFileSize);
                 }
+            }
+        }
+    }
+
+    CComboBox* pCom = static_cast<CComboBox*>(GetDlgItem(IDC_CB_COM_SEL));
+    if (pCom)
+    {
+        int nSel = pCom->GetCurSel();
+        if (nSel >= 0)
+        {
+            CString comName;
+            pCom->GetLBText(nSel, comName);
+            if (!comName.IsEmpty())
+            {
+                ::DialogAdapter settingsAdapter(this);
+                settingsAdapter.SaveDefaultFactoryCom(comName);
             }
         }
     }
@@ -1009,11 +1100,11 @@ void CSparkUfsPdtDlg::RefreshFactoryComList()
 
     if (ports.empty())
     {
-        int idx = pCom->AddString(_T("COM1"));
+        /*int idx = pCom->AddString(_T("COM1"));
         if (idx >= 0)
         {
             pCom->SetCurSel(idx);
-        }
+        }*/
         return;
     }
 
@@ -1043,10 +1134,29 @@ bool CSparkUfsPdtDlg::ConnectFactorySerial(const CString& comName)
         return false;
     }
 
+    bool comExists = false;
+    const auto ports = m_factorySerial.EnumDetailSerialPorts();
+    for (const auto& p : ports)
+    {
+        CString portName(p.port.c_str());
+        if (portName.CompareNoCase(comName) == 0)
+        {
+            comExists = true;
+            break;
+        }
+    }
+
+    if (!comExists)
+    {
+        m_factoryComConnected = false;
+        return false;
+    }
+
     UINT baudRate = GetFactoryComBaudRate();
     UINT byteSize = GetFactoryComByteSize();
     UINT parity = GetFactoryComParity();
     UINT stopBits = GetFactoryComStopBits();
+
 
     CString mutableComName = comName;
     bool result = m_factorySerial.Open(mutableComName, baudRate, byteSize, parity, stopBits);
@@ -1073,12 +1183,13 @@ void CSparkUfsPdtDlg::DiagnosticSerialPortStatus()
 
 CString CSparkUfsPdtDlg::GetDefaultFactoryCom() const
 {
-    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(const_cast<CSparkUfsPdtDlg*>(this));
+    PST_UFS_BASE_SETTING pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting && pBaseSetting->szComName[0])
     {
         return CString(pBaseSetting->szComName);
     }
-    return _T("COM1");
+    return _T("");
 }
 
 void CSparkUfsPdtDlg::SaveDefaultFactoryCom(const CString& comName)
@@ -1088,7 +1199,8 @@ void CSparkUfsPdtDlg::SaveDefaultFactoryCom(const CString& comName)
         return;
     }
 
-    auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(this);
+    PST_UFS_BASE_SETTING pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting)
     {
         CStringA comNameA(comName);
@@ -1100,7 +1212,8 @@ void CSparkUfsPdtDlg::SaveDefaultFactoryCom(const CString& comName)
 
 UINT CSparkUfsPdtDlg::GetFactoryComBaudRate() const
 {
-    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(const_cast<CSparkUfsPdtDlg*>(this));
+    const auto* pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting && pBaseSetting->uBaudRate > 0)
     {
         return pBaseSetting->uBaudRate;
@@ -1110,7 +1223,8 @@ UINT CSparkUfsPdtDlg::GetFactoryComBaudRate() const
 
 UINT CSparkUfsPdtDlg::GetFactoryComByteSize() const
 {
-    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(const_cast<CSparkUfsPdtDlg*>(this));
+    const auto* pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting && pBaseSetting->uByteSize > 0)
     {
         return pBaseSetting->uByteSize;
@@ -1120,7 +1234,8 @@ UINT CSparkUfsPdtDlg::GetFactoryComByteSize() const
 
 UINT CSparkUfsPdtDlg::GetFactoryComParity() const
 {
-    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(const_cast<CSparkUfsPdtDlg*>(this));
+    const auto* pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting)
     {
         return pBaseSetting->uParity;
@@ -1130,7 +1245,8 @@ UINT CSparkUfsPdtDlg::GetFactoryComParity() const
 
 UINT CSparkUfsPdtDlg::GetFactoryComStopBits() const
 {
-    const auto* pBaseSetting = CDialogBase::GetSharedBaseSetting();
+    ::DialogAdapter adapter(const_cast<CSparkUfsPdtDlg*>(this));
+    const auto* pBaseSetting = adapter.GetBaseSetting();
     if (pBaseSetting)
     {
         return pBaseSetting->uStopBits;

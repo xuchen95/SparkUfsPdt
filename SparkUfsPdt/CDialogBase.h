@@ -77,12 +77,12 @@ public:
 	DECLARE_DYNAMIC(CDialogBase)
 	explicit CDialogBase(UINT nIDTemplate, CWnd* pParent = nullptr);
 
-	static PUFS_OPTION GetSharedUfsOption();
+	// Instance accessors remain public for UI dialogs that operate on this dialog instance
 	void SetUfsOption(PUFS_OPTION pOption);
 	PUFS_OPTION GetUfsOption() const;
-
-	static PST_UFS_BASE_SETTING GetSharedBaseSetting();
 	PST_UFS_BASE_SETTING GetBaseSetting() const;
+
+	// Persistence helpers remain public for use by UI dialogs
 	static void LoadBaseSettingFromIni(const CString& path);
 	static void SaveBaseSettingToIni(const CString& path);
 	static void LoadRemoteSnToMainParam();
@@ -91,9 +91,10 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
 
 private:
-	static UFS_OPTION s_sharedOption;
+	// Instance-held pointers to option and base setting. Shared storage is
+	// managed by SettingsService; use ISettingsProvider/DialogAdapter to
+	// access global settings from business logic.
 	PUFS_OPTION m_pUfsOption = nullptr;
-	static ST_UFS_BASE_SETTING s_baseOption;
 	PST_UFS_BASE_SETTING m_pBaseOption = nullptr;
 };
 

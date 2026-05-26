@@ -66,6 +66,33 @@
     <ClInclude Include="SerialDef.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="DataFormatter.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IspMarkCache.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ISettingsProvider.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ILogger.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IUiNotifier.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DialogAdapter.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SettingsService.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryLeakHelper.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="libsparkusb.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SparkUfsPdt.cpp">
@@ -107,6 +134,21 @@
     <ClCompile Include="CSerialPort.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="DataFormatter.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="IspMarkCache.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\unit_tests.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SettingsService.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryLeakHelper.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SparkUfsPdt.rc">
@@ -121,6 +163,9 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\SparkUfsPdt.ico">
+      <Filter>资源文件</Filter>
+    </Image>
+    <Image Include="res\icon1.ico">
       <Filter>资源文件</Filter>
     </Image>
   </ItemGroup>

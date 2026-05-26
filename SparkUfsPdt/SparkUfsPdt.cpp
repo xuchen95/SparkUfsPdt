@@ -7,6 +7,9 @@
 #include "SparkUfsPdtDlg.h"
 #include "../SparkLog/SparkLog.h"
 #include <memory>
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -34,9 +37,7 @@ CSparkUfsPdtApp::CSparkUfsPdtApp()
 
 // 唯一的 CSparkUfsPdtApp 对象
 
-#ifdef _DEBUG
-static _CrtMemState s_initMemState;
-#endif
+// Debug memory leak detection removed
 
 CSparkUfsPdtApp theApp;
 
@@ -46,21 +47,10 @@ CSparkUfsPdtApp theApp;
 BOOL CSparkUfsPdtApp::InitInstance()
 {
 #ifdef _DEBUG
-    // ① BreakAlloc 必须在所有分配之前设置，否则目标块已分配，断点永远不触发。
-    //    若块号在 InitInstance 之前（全局构造阶段），
-    //    则需在文件顶部 theApp 之前通过全局 helper 对象设置。
-    static long s_breakAllocBlock =-1;   // ← 改为泄漏块号，-1 = 禁用
-    if (s_breakAllocBlock != -1)
-        _CrtSetBreakAlloc(s_breakAllocBlock);
-
-    // 只启用分配跟踪；不设置 LEAK_CHECK_DF / DELAY_FREE_MEM_DF
-    int flags = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
-    flags |= _CRTDBG_ALLOC_MEM_DF;
-    _CrtSetDbgFlag(flags);
-
-    _CrtSetReportMode(_CRT_WARN,  _CRTDBG_MODE_DEBUG);
-    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_DEBUG);
-    // 注意：基准在下方，紧靠 DoModal，排除 MFC 初始化噪音
+	// 临时在第 6658 次分配处触发断点以便调试分配来源
+	static long s_breakAllocBlock = -1; // -1 = disabled
+	if (s_breakAllocBlock != -1)
+		_CrtSetBreakAlloc(s_breakAllocBlock);
 #endif
 
     // On Windows XP, InitCommonControlsEx is required when using Common
@@ -93,10 +83,13 @@ BOOL CSparkUfsPdtApp::InitInstance()
     SetRegistryKey(_T("Local AppWizard-Generated Applications"));
 
 #ifdef _DEBUG
-    // 基准点：MFC 框架初始化完毕后，对话框运行前。
-    // 排除 CMFCVisualManager 单例、m_pszRegistryKey 等由 ~CWinApp() 释放的
-    // 框架内部分配块（437、443 等），只报告对话框执行期间的真实泄漏。
-    _CrtMemCheckpoint(&s_initMemState);
+    // Debug memory leak detection disabled by request
+#endif
+
+#ifdef _DEBUG
+#ifdef _DEBUG
+    // Keep CRT reports directed to debugger output (default) so leaks appear in Visual Studio Output window
+#endif
 #endif
 
 	CSparkUfsPdtDlg dlg;
@@ -119,6 +112,7 @@ BOOL CSparkUfsPdtApp::InitInstance()
     // Delete the shell manager created above.
 	// Smart pointer will automatically release pShellManager when it goes out of scope
 	pShellManager.reset();
+    // no-op: keep patch context anchored here
 
 #if !defined(_AFXDLL) && !defined(_AFX_NO_MFC_CONTROLS_IN_DIALOGS)
 	ControlBarCleanUp();
@@ -137,13 +131,7 @@ int CSparkUfsPdtApp::ExitInstance()
     // 先调用 MFC 基类清理，让 MFC 内部资源释放完毕
     int result = CWinApp::ExitInstance();
 
-#ifdef _DEBUG
-    // 只 dump InitInstance 基准之后的分配，排除全局构造阶段的早期块。
-    // 若输出中有带文件/行号的块，则为真实的用户代码泄漏。
-    // 若只看到 "Dumping objects -> Object dump complete."，则无泄漏。
-    _RPT0(_CRT_WARN, "=== Leak check (allocations since InitInstance) ===\n");
-    _CrtMemDumpAllObjectsSince(&s_initMemState);
-#endif
+    // Debug memory leak detection disabled by request
 
     return result;
 }
