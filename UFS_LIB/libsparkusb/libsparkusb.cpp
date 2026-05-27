@@ -34,6 +34,21 @@ static uint8_t gu08TesterMap[MAX_DEVICE_CNT];
 
 void ClearDeviceInfos(void)
 {
+    // Free any previously allocated interface detail structures to avoid leaks
+    for (int i = 0; i < MAX_DEVICE_CNT; ++i)
+    {
+        if (gstDeviceInfo[i].pDetailData != nullptr)
+        {
+            // GlobalFree returns NULL on success; ignore return value
+            GlobalFree(gstDeviceInfo[i].pDetailData);
+            gstDeviceInfo[i].pDetailData = nullptr;
+        }
+        // clear other fields
+        gstDeviceInfo[i].DiskNumber = 0;
+        gstDeviceInfo[i].szPhyDrivePath[0] = '\0';
+        gstDeviceInfo[i].szDriveName[0] = '\0';
+        ZeroMemory(&gstDeviceInfo[i].sdn, sizeof(gstDeviceInfo[i].sdn));
+    }
     gu64DeviceBmp = gu08DeviceCnt = gu08DeviceSel = 0;
 }
 

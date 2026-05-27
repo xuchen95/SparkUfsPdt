@@ -391,6 +391,9 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         }
     }
 
+    // The TaskProgressMsg pointer was allocated by the worker (DialogAdapter).
+    // Free it here to avoid leaking memory for every progress notification.
+    delete msg;
     return 0;
 }
 
