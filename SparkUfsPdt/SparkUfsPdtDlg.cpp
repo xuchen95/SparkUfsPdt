@@ -593,14 +593,13 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             // Ensure the item is visible so we can retrieve the subitem rectangle
             pList->EnsureVisible(i, FALSE);
             CRect rcSubItem;
+            // GetSubItemRect returns coordinates in the list's client space; keep them as-is
             pList->GetSubItemRect(i, progressCol, LVIR_BOUNDS, rcSubItem);
-            // Convert the subitem rectangle from list client coordinates to dialog client coordinates
-            pList->ClientToScreen(&rcSubItem);
-            ScreenToClient(&rcSubItem);
 
             int nProgressId = CSparkUfsPdtDlg::IDC_S_UI_THREAD_BASE + CSparkUfsPdtDlg::UI_THREAD_COUNT + i;
-            // Create the progress control overlay in the Progress column
-            if (!m_progress[i].Create(WS_CHILD | WS_VISIBLE | PBS_SMOOTH, rcSubItem, this, nProgressId))
+            // Create the progress control as a child of the list control so it will be
+            // properly clipped and will not be drawn under the list when the list redraws
+            if (!m_progress[i].Create(WS_CHILD | WS_VISIBLE | PBS_SMOOTH, rcSubItem, pList, nProgressId))
             {
                 // failed to create, continue
             }

@@ -184,9 +184,9 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     BOOL bForceRomMode = FALSE;
-    if (settings_ && settings_->GetUfsOption())
+    if (settings_ && settings_->GetBaseSetting())
     {
-        bForceRomMode = settings_->GetUfsOption()->mainPrm.bBurnInTest ? FALSE : FALSE; // preserve behavior for now
+        bForceRomMode = settings_->GetBaseSetting()->ForceRomMode ? FALSE : FALSE; // preserve behavior for now
     }
     do
     {
