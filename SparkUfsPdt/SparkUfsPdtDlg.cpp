@@ -32,7 +32,7 @@ std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
 
 namespace
 {
-    // Owner-draw rendering used; overlay controls removed.
+    // Owner-draw rendering used for progress column.
 }
 
 
@@ -239,7 +239,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnScanDevice()
                                 drv.Format(_T("%hs"), strDrive);
                                 pList->SetItemText(found, 3, drv);
                                 pList->SetItemText(found, 2, _T("Ready"));
-                                if (found >= 0 && found < CSparkUfsPdtDlg::UI_THREAD_COUNT) m_portFailed[found] = false;
+                                if (found >= 0 && found < CSparkUfsPdtDlg::UI_THREAD_COUNT) m_ports[found].failed = false;
                                 // Update start time to current time (column index 4)
                                 CTime now = CTime::GetCurrentTime();
                                 pList->SetItemText(found, 4, now.Format(_T("%Y-%m-%d %H:%M:%S")));
@@ -295,7 +295,7 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
                     int nItemIdx = nItem;
                     if (nItemIdx >= 0 && nItemIdx < CSparkUfsPdtDlg::UI_THREAD_COUNT)
                     {
-                        this->m_portFailed[nItemIdx] = false;
+                        this->m_ports[nItemIdx].failed = false;
                     }
                 }
                 else
@@ -304,7 +304,7 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
                     int nItemIdx = nItem;
                     if (nItemIdx >= 0 && nItemIdx < CSparkUfsPdtDlg::UI_THREAD_COUNT)
                     {
-                        if (this->m_portFailed[nItemIdx])
+                        if (this->m_ports[nItemIdx].failed)
                         {
                             pLVCD->clrText = RGB(200, 0, 0);
                         }
@@ -330,8 +330,8 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
                 CBrush brBk(bk);
                 pDC->FillRect(rcSubItem, &brBk);
 
-                int progress = m_portProgress[nItem];
-                bool failed = m_portFailed[nItem];
+                int progress = m_ports[nItem].progress;
+                bool failed = m_ports[nItem].failed;
                 CRect fillRc = rcSubItem;
                 fillRc.right = fillRc.left + (fillRc.Width() * progress) / 100;
                 // Choose distinct colors: red for failed, green for complete, blue for in-progress
@@ -370,11 +370,9 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
     }
 }
 
-// Ensure overlay progress controls follow list layout when the list scrolls
+// Redraw the list so owner-draw progress bars are repainted after layout changes
 void CSparkUfsPdtDlg::RepositionProgressControls()
 {
-    // Owner-draw mode: no overlay controls to reposition.
-    // Force a redraw of the list control so the owner-draw progress bars are repainted
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     if (!pList) return;
     pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
@@ -507,7 +505,7 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
             if (port >= 0 && port < UI_THREAD_COUNT)
             {
                 // update owner-draw progress state
-                m_portProgress[port] = progress;
+                m_ports[port].progress = progress;
 
                 CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
                 if (pList)
@@ -532,8 +530,8 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                             if (hdc)
                             {
                                 CDC dc; dc.Attach(hdc);
-                                int progressLocal = m_portProgress[port];
-                                bool failedLocal = m_portFailed[port];
+                                int progressLocal = m_ports[port].progress;
+                                bool failedLocal = m_ports[port].failed;
                                 CRect fillRc = rcSubItem; fillRc.right = fillRc.left + (fillRc.Width() * progressLocal) / 100;
                                 COLORREF fillColor = failedLocal ? RGB(200,0,0) : (progressLocal >= 100 ? RGB(0,160,0) : RGB(0,120,215));
                                 CBrush br(fillColor);
@@ -572,8 +570,8 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                         }
                     }
                     // compute failure state based on incoming result and previous flag
-                    bool failedNow = (result != 0) || m_portFailed[port];
-                    m_portFailed[port] = failedNow;
+                    bool failedNow = (result != 0) || m_ports[port].failed;
+                    m_ports[port].failed = failedNow;
                     // Invalidate subitem again in case failure coloring changed
                     if (idx >= 0)
                     {
@@ -582,10 +580,10 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 }
 
                 // group/complete handling for this port
-                const bool earlyFailForGroup = (progress < 100 && result != 0 && m_portGroupIdx[port] >= 0 && m_portGroupIdx[port] < 2);
-                if ((progress >= 100 || earlyFailForGroup) && !m_portCompleted[port])
+                const bool earlyFailForGroup = (progress < 100 && result != 0 && m_ports[port].groupIdx >= 0 && m_ports[port].groupIdx < 2);
+                if ((progress >= 100 || earlyFailForGroup) && !m_ports[port].completed)
                 {
-                    m_portCompleted[port] = true;
+                    m_ports[port].completed = true;
                     if (result == 0 || result == ERROR_SUCCESS)
                     {
                         m_passCount++;
@@ -593,14 +591,14 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                     else
                     {
                         m_failCount++;
-                        m_portFailed[port] = true; // ensure failed flag set for final failure
+                        m_ports[port].failed = true; // ensure failed flag set for final failure
                     }
                     UpdateStatusBarText();
 
                     DecrementActiveTasks(1);
 
-                    int g = m_portGroupIdx[port];
-                    int pos = m_portGroupPos[port];
+                    int g = m_ports[port].groupIdx;
+                    int pos = m_ports[port].groupPos;
                     if (g >= 0 && g < 2 && pos >= 0 && pos < MACHINE_DEVICE_CNT && m_groupPending[g] > 0)
                     {
                         m_groupResult[g][pos] = static_cast<WORD>((result == 0 || result == ERROR_SUCCESS) ? 0x0001 : (result & 0xFFFF));
@@ -610,10 +608,10 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                             m_factorySerial.SendGroupTestDone(static_cast<BYTE>(g), m_groupResult[g]);
                             for (int i = 0; i < UI_THREAD_COUNT; ++i)
                             {
-                                if (m_portGroupIdx[i] == g)
+                                if (m_ports[i].groupIdx == g)
                                 {
-                                    m_portGroupIdx[i] = -1;
-                                    m_portGroupPos[i] = -1;
+                                    m_ports[i].groupIdx = -1;
+                                    m_ports[i].groupPos = -1;
                                 }
                             }
                         }
@@ -646,9 +644,9 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
     if (port >=0 && port < UI_THREAD_COUNT)
     {
         // Legacy path: update owner-draw state and invalidate subitem so it repaints
-        bool failedNow = (result != 0) || m_portFailed[port];
-        m_portFailed[port] = failedNow;
-        m_portProgress[port] = progress;
+        bool failedNow = (result != 0) || m_ports[port].failed;
+        m_ports[port].failed = failedNow;
+        m_ports[port].progress = progress;
         CListCtrl* pListLegacy = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
         if (pListLegacy)
         {
@@ -684,13 +682,13 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 if (result == 0 || result == ERROR_SUCCESS)
                 {
                     pList->SetItemText(idx, 2, status);
-                    if (port >= 0 && port < UI_THREAD_COUNT) m_portFailed[port] = false;
+                    if (port >= 0 && port < UI_THREAD_COUNT) m_ports[port].failed = false;
                 }
                 else
                 {
                     CString st; st.Format(_T("%s (0x%X)"), status.GetString(), result);
                     pList->SetItemText(idx, 2, st);
-                    if (port >= 0 && port < UI_THREAD_COUNT) m_portFailed[port] = true;
+                    if (port >= 0 && port < UI_THREAD_COUNT) m_ports[port].failed = true;
                 }
                 if (progress >= 100)
                 {
@@ -701,13 +699,13 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         }
     }
 
-    const bool earlyFailForGroup = (progress < 100 && result != 0 && port >= 0 && port < UI_THREAD_COUNT && m_portGroupIdx[port] >= 0 && m_portGroupIdx[port] < 2);
+    const bool earlyFailForGroup = (progress < 100 && result != 0 && port >= 0 && port < UI_THREAD_COUNT && m_ports[port].groupIdx >= 0 && m_ports[port].groupIdx < 2);
 
     if ((progress >= 100 || earlyFailForGroup) && port >= 0 && port < UI_THREAD_COUNT)
     {
-        if (!m_portCompleted[port])
+        if (!m_ports[port].completed)
         {
-            m_portCompleted[port] = true;
+            m_ports[port].completed = true;
             if (result == 0 || result == ERROR_SUCCESS)
             {
                 m_passCount++;
@@ -728,8 +726,8 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 }
             }
 
-            int g = m_portGroupIdx[port];
-            int pos = m_portGroupPos[port];
+            int g = m_ports[port].groupIdx;
+            int pos = m_ports[port].groupPos;
             if (g >= 0 && g < 2 && pos >= 0 && pos < MACHINE_DEVICE_CNT && m_groupPending[g] > 0)
             {
                 m_groupResult[g][pos] = static_cast<WORD>((result == 0 || result == ERROR_SUCCESS) ? 0x0001 : (result & 0xFFFF));
@@ -739,10 +737,10 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                     m_factorySerial.SendGroupTestDone(static_cast<BYTE>(g), m_groupResult[g]);
                     for (int i = 0; i < UI_THREAD_COUNT; ++i)
                     {
-                        if (m_portGroupIdx[i] == g)
+                        if (m_ports[i].groupIdx == g)
                         {
-                            m_portGroupIdx[i] = -1;
-                            m_portGroupPos[i] = -1;
+                            m_ports[i].groupIdx = -1;
+                            m_ports[i].groupPos = -1;
                         }
                     }
                 }
@@ -781,7 +779,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     m_totalCount += totalReady;
     for (int i = 0; i < UI_THREAD_COUNT; ++i)
     {
-        m_portCompleted[i] = false;
+        m_ports[i].completed = false;
     }
     UpdateStatusBarText();
 
@@ -939,7 +937,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             CString port;
             port.Format(_T("Port %d"), i + 1);
             int idx = pList->InsertItem(i, port);
-                pList->SetItemText(idx, 1, _T(""));
+            pList->SetItemText(idx, 1, _T(""));
             pList->SetItemText(idx, 2, _T(""));
             pList->SetItemText(idx, 3, _T("")); // Drive
             pList->SetItemText(idx, 4, _T(""));
@@ -948,6 +946,12 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             pList->SetItemText(idx, 7, _T("")); // MID
             pList->SetItemText(idx, 8, _T("")); // OID
             pList->SetItemText(idx, 9, _T("")); // FW Version
+            m_ports[i].progress = 0;
+            m_ports[i].failed = false;
+            m_ports[i].completed = false;
+            m_ports[i].serial = CStringW(L"", 128);
+            m_ports[i].groupIdx = -1;
+            m_ports[i].groupPos = -1;
         }
 
         // Progress will be rendered by owner-draw in NM_CUSTOMDRAW
@@ -977,8 +981,8 @@ void CSparkUfsPdtDlg::InitListViewItems()
         // Initialize per-port owner-draw state
         for (int i = 0; i < CSparkUfsPdtDlg::UI_THREAD_COUNT; ++i)
         {
-            m_portProgress[i] = 0;
-            m_strwSn[i]=CStringW(L"",128);
+            m_ports[i].progress = 0;
+            m_ports[i].serial = CStringW(L"",128);
         }
     }
 }
@@ -993,10 +997,12 @@ void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
     m_scanButtonDisabledByRun = false;
     for (int i = 0; i < UI_THREAD_COUNT; ++i)
     {
-        m_portProgress[i] = 0;
-        m_portFailed[i] = false;
-        m_portCompleted[i] = false;
-        m_strwSn[i] = CStringW(L"", 128);
+        m_ports[i].progress = 0;
+        m_ports[i].failed = false;
+        m_ports[i].completed = false;
+        m_ports[i].serial = CStringW(L"", 128);
+        m_ports[i].groupIdx = -1;
+        m_ports[i].groupPos = -1;
     }
 
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
@@ -1176,9 +1182,9 @@ LRESULT CSparkUfsPdtDlg::OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam)
                 continue;
             }
 
-            m_portCompleted[port] = false;
-            m_portGroupIdx[port] = group;
-            m_portGroupPos[port] = i;
+            m_ports[port].completed = false;
+            m_ports[port].groupIdx = group;
+            m_ports[port].groupPos = i;
 
             try
             {

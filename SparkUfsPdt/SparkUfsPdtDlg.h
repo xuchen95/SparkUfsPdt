@@ -11,6 +11,7 @@
 extern char g_UfsIsp[UFS_ISP_SIZE];
 #include "CImpState.h"
 #include "EventMessages.h"
+#include <array>
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogBase
@@ -146,21 +147,28 @@ private:
     int m_totalCount = 0;
     int m_passCount = 0;
     int m_failCount = 0;
-    bool m_portCompleted[UI_THREAD_COUNT] = {};
-    bool m_portFailed[UI_THREAD_COUNT] = {};
-    int  m_portProgress[UI_THREAD_COUNT] = {};
+
+    // Per-port state consolidated into a structure for clarity and easier maintenance
+    struct PortState {
+        bool completed = false;
+        bool failed = false;
+        int progress = 0;
+        CStringW serial = CStringW(L"", 128);
+        int groupIdx = -1;
+        int groupPos = -1;
+    };
+
+    std::array<PortState, UI_THREAD_COUNT> m_ports;
 
     CSerialPort m_factorySerial;
-    int m_portGroupIdx[UI_THREAD_COUNT] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
-    int m_portGroupPos[UI_THREAD_COUNT] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
     int m_groupPending[2] = { 0, 0 };
     WORD m_groupResult[2][MACHINE_DEVICE_CNT] = {};
 public:
-    CStringW m_strwSn[UI_THREAD_COUNT];
+    // Per-port serials are stored in m_ports[i].serial
     // Subclass handling removed; rely on NM_CUSTOMDRAW for custom painting
     // Accessors used by list subclass drawing
-    int GetPortProgress(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portProgress[idx] : 0; }
-    bool IsPortFailed(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portFailed[idx] : false; }
+    int GetPortProgress(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_ports[idx].progress : 0; }
+    bool IsPortFailed(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_ports[idx].failed : false; }
     // Read-only accessor for scan button disabled state. Use Increment/DecrementActiveTasks to change.
     bool IsScanButtonDisabled() const { return m_scanButtonDisabledByRun; }
 };
