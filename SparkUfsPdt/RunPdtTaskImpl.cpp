@@ -8,6 +8,7 @@
 #include "libsparkusb.h"
 #include "../SparkLog/SparkLog.h"
 #include "CImpState.h"
+#include "StagePipeline.h"
 #include "DialogAdapter.h"
 
 using namespace spark::sm3350;
@@ -112,7 +113,12 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
             int stageRet = ERROR_SUCCESS;
             switch (stages[i].first)
             {
-            case ST_Reboot: stageRet = state->RebootStage(portIndex, lg); break;
+            case ST_Reboot:
+            {
+                RebootStage rebootStage([](TaskContext& c) { return c.state->RebootStage(c.portIndex, *c.lg); });
+                stageRet = state->RebootStage(portIndex, lg);
+                break;
+            }
             case ST_ForceRom: stageRet = state->ForceRomStage(portIndex, lg); break;
             case ST_MpStart: stageRet = state->MpStartStage(portIndex, lg); break;
             case ST_Write1024KIspMp: stageRet = state->Write1024KIspMpStage(portIndex, lg); break;
@@ -122,7 +128,12 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
             case ST_SetSn: stageRet = state->SetSnStage(portIndex, lg); break;
             case ST_VerifySn: stageRet = state->VerifySnStage(portIndex, lg); break;
             case ST_VerifyIsp: stageRet = state->VerifyIspStage(portIndex, lg); break;
-            case ST_PowerOff: stageRet = state->PowerOffStage(portIndex, lg); break;
+            case ST_PowerOff:
+            {
+                PowerOffStage powerOffStage([](TaskContext& c) { return c.state->PowerOffStage(c.portIndex, *c.lg); });
+                stageRet = state->PowerOffStage(portIndex, lg);
+                break;
+            }
             default: stageRet = ERROR_INVALID_PARAMETER; break;
             }
             if ((ret = stageRet) != ERROR_SUCCESS)
