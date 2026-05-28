@@ -2,6 +2,8 @@
 #include "EventBus.h"
 #include "EventMessages.h"
 #include <concrt.h>
+#include <chrono>
+#include <thread>
 
 using namespace spark::ufspdt;
 
@@ -11,20 +13,137 @@ EventBus& EventBus::Instance()
 	return s;
 }
 
+EventBus::EventBus()
+{
+	stopNotifier_.store(false);
+	notifierThread_ = std::thread([this]() {
+		using clock = std::chrono::steady_clock;
+		while (!stopNotifier_.load())
+		{
+			long long nextWakeMs = 0;
+			std::vector<std::pair<HWND, std::shared_ptr<QueueEntry>>> toNotify;
+
+			// Collect entries that need notify and compute earliest nextNotifyMs
+			{
+				std::lock_guard<std::mutex> lk(mutex_);
+				auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count();
+				for (auto &kv : map_)
+				{
+					auto hwnd = kv.first;
+					auto entry = kv.second;
+					long long nextMs = entry->nextNotifyMs.load(std::memory_order_acquire);
+					if (nextMs == 0)
+					{
+						continue;
+					}
+					if (nextMs <= nowMs)
+					{
+						toNotify.emplace_back(hwnd, entry);
+					}
+					else
+					{
+						if (nextWakeMs == 0 || nextMs < nextWakeMs) nextWakeMs = nextMs;
+					}
+				}
+			}
+
+			// Post messages for ready entries
+			for (auto &p : toNotify)
+			{
+				auto hwnd = p.first;
+				auto entry = p.second;
+				// reset nextNotifyMs before posting
+				entry->nextNotifyMs.store(0, std::memory_order_release);
+				entry->lastNotifyMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count(), std::memory_order_relaxed);
+				::PostMessage(hwnd, MSG_WM_TASK_PROGRESS, 0, 0);
+			}
+
+			// Wait until nextWakeMs or notified
+			if (stopNotifier_.load()) break;
+			if (nextWakeMs == 0)
+			{
+				// No scheduled timers, wait until someone schedules
+				std::unique_lock<std::mutex> lk(notifierCvMutex_);
+				notifierCv_.wait_for(lk, std::chrono::milliseconds(200));
+			}
+			else
+			{
+				auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count();
+				long long waitMs = nextWakeMs > nowMs ? (nextWakeMs - nowMs) : 0;
+				std::unique_lock<std::mutex> lk(notifierCvMutex_);
+				notifierCv_.wait_for(lk, std::chrono::milliseconds(waitMs));
+			}
+		}
+	});
+}
+
+EventBus::~EventBus()
+{
+	stopNotifier_.store(true);
+	notifierCv_.notify_all();
+	if (notifierThread_.joinable()) notifierThread_.join();
+}
+
 void EventBus::Publish(HWND target, const ProgressEvent& evt)
 {
 	if (!target) return;
-	std::lock_guard<std::mutex> lk(mutex_);
-	auto& entry = map_[target];
-	int p = evt.portIndex;
-	if (p < 0 || p >= (int)entry.slots.size()) return;
-	entry.slots[p].evt = evt;
-	entry.slots[p].dirty.store(true);
-	// Immediately notify UI for every publish (no throttling)
-	bool expected = false;
-	if (entry.pending.compare_exchange_strong(expected, true))
+	std::shared_ptr<EventBus::QueueEntry> entryPtr;
 	{
-		::PostMessage(target, MSG_WM_TASK_PROGRESS, 0, 0);
+		std::lock_guard<std::mutex> lk(mutex_);
+		auto it = map_.find(target);
+		if (it == map_.end())
+		{
+			entryPtr = std::make_shared<QueueEntry>();
+			map_.emplace(target, entryPtr);
+		}
+		else
+		{
+			entryPtr = it->second;
+		}
+	}
+
+	int p = evt.portIndex;
+	if (p < 0 || p >= (int)entryPtr->slots.size()) return;
+
+	// Protect slot update with per-entry lock to avoid races with ConsumeAll
+	{
+		std::lock_guard<std::mutex> lk(entryPtr->lock);
+		entryPtr->slots[p].evt = evt;
+		entryPtr->slots[p].dirty.store(true, std::memory_order_release);
+	}
+
+	// Notify UI thread (only once when pending flips from false to true)
+	bool expected = false;
+	if (entryPtr->pending.compare_exchange_strong(expected, true))
+	{
+		// Throttle rapid notifications to avoid overwhelming UI. If the last
+		// notification happened recently, schedule a delayed notifier; otherwise
+		// post immediately. Use steady_clock for monotonic timing.
+		constexpr long long THROTTLE_MS = 50; // milliseconds
+		using clock = std::chrono::steady_clock;
+		auto nowTp = clock::now();
+		auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTp.time_since_epoch()).count();
+		long long last = entryPtr->lastNotifyMs.load(std::memory_order_relaxed);
+		if (last == 0 || (nowMs - last) >= THROTTLE_MS)
+		{
+			entryPtr->lastNotifyMs.store(nowMs, std::memory_order_relaxed);
+			::PostMessage(target, MSG_WM_TASK_PROGRESS, 0, 0);
+		}
+		else
+		{
+			// schedule a delayed notification via the centralized notifier
+			long long waitMs = THROTTLE_MS - (nowMs - last);
+			long long scheduledMs = nowMs + (waitMs > 0 ? waitMs : 0);
+			long long prev = entryPtr->nextNotifyMs.exchange(scheduledMs, std::memory_order_release);
+			// If there was an earlier scheduled time, keep the earlier one (so we don't postpone)
+			if (prev != 0 && prev < scheduledMs)
+			{
+				// restore earlier time
+				entryPtr->nextNotifyMs.store(prev, std::memory_order_release);
+			}
+			// wake the notifier thread to re-evaluate next wake time
+			notifierCv_.notify_all();
+		}
 	}
 }
 
@@ -32,20 +151,28 @@ std::vector<ProgressEvent> EventBus::ConsumeAll(HWND target)
 {
 	std::vector<ProgressEvent> out;
 	if (!target) return out;
-	std::lock_guard<std::mutex> lk(mutex_);
-	auto it = map_.find(target);
-	if (it == map_.end()) return out;
-	auto& entry = it->second;
-	for (int i = 0; i < (int)entry.slots.size(); ++i)
+	std::shared_ptr<EventBus::QueueEntry> entryPtr;
 	{
-		if (entry.slots[i].dirty.load())
-		{
-			out.push_back(entry.slots[i].evt);
-			entry.slots[i].dirty.store(false);
-		}
+		std::lock_guard<std::mutex> lk(mutex_);
+		auto it = map_.find(target);
+		if (it == map_.end()) return out;
+		entryPtr = it->second;
 	}
-	// reset pending flag
-	entry.pending.store(false);
+
+	// Lock the entry while reading and clearing dirty flags
+	{
+		std::lock_guard<std::mutex> lk(entryPtr->lock);
+		for (int i = 0; i < (int)entryPtr->slots.size(); ++i)
+		{
+			if (entryPtr->slots[i].dirty.load(std::memory_order_acquire))
+			{
+				out.push_back(entryPtr->slots[i].evt);
+				entryPtr->slots[i].dirty.store(false, std::memory_order_release);
+			}
+		}
+		// reset pending flag
+		entryPtr->pending.store(false);
+	}
 	return out;
 }
 
