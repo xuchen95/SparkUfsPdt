@@ -14,6 +14,8 @@
 #include "../SparkLog/SparkLog.h"
 #include "CImpState.h"
 #include "DialogAdapter.h"
+#include "EventBus.h"
+#include "EventMessages.h"
 #include <cerrno>
 
 
@@ -27,6 +29,11 @@ char g_UfsIsp[UFS_ISP_SIZE] = {};
 
 // define static pool pointer
 std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
+
+namespace
+{
+    // Owner-draw rendering used; overlay controls removed.
+}
 
 
 // CSparkUfsPdtDlg dialog
@@ -49,16 +56,19 @@ BEGIN_MESSAGE_MAP(CSparkUfsPdtDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_WM_DESTROY()
 	ON_WM_CTLCOLOR()
-	ON_WM_SIZE()
+    ON_WM_SIZE()
+    ON_WM_VSCROLL()
+    ON_WM_HSCROLL()
+    ON_WM_TIMER()
 	ON_BN_CLICKED(IDC_BTN_SCAN_DEVICE, &CSparkUfsPdtDlg::OnBnClickedBtnScanDevice)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_DEVICE, &CSparkUfsPdtDlg::OnNMCustomdrawListDevice)
 	ON_BN_CLICKED(IDC_BTN_START_PDT, &CSparkUfsPdtDlg::OnBnClickedBtnStartPdt)
 	ON_BN_CLICKED(IDC_BTN_PDT_SETTING, &CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting)
 	ON_COMMAND(ID_SETTING_CONFIG, &CSparkUfsPdtDlg::OnSettingConfig)
-	ON_MESSAGE(WM_USER+0x65, &CSparkUfsPdtDlg::OnTaskProgress)
+    ON_MESSAGE(MSG_WM_TASK_PROGRESS, &CSparkUfsPdtDlg::OnTaskProgress)
 	ON_MESSAGE(FACOTRY_CMD_DOWNLOAD, &CSparkUfsPdtDlg::OnFactoryCmdDownload)
 	ON_MESSAGE(FACOTRY_CMD_START_TEST, &CSparkUfsPdtDlg::OnFactoryCmdStartTest)
-    ON_MESSAGE(WM_USER+0x70, &CSparkUfsPdtDlg::OnGetPortSn)
+    ON_MESSAGE(MSG_WM_GET_PORT_SN, &CSparkUfsPdtDlg::OnGetPortSn)
 	ON_CBN_SELCHANGE(IDC_CB_COM_SEL, &CSparkUfsPdtDlg::OnCbnSelchangeCbComSel)
 END_MESSAGE_MAP()
 
@@ -75,7 +85,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
     CString title;
-    title.Format(_T("MetORAGE UFS TOOL VER %s"), CPubFunc::GetGitVersionString().GetString());
+    title.Format(_T("Metorage UFS TOOL VER %s"), CPubFunc::GetGitVersionString().GetString());
     SetWindowText(title);
 
     CString baseIniPath = GetBaseSettingIniPath();
@@ -97,6 +107,14 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     }
 
     CreateListViewColumns();
+    CListCtrl* pListTest = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pListTest)
+    {
+        CRect rcTest;
+        pListTest->GetSubItemRect(0, 1, LVIR_BOUNDS, rcTest);
+        pListTest->InvalidateRect(rcTest);
+        pListTest->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    }
 
 	if (CWnd* pWnd = GetDlgItem(IDC_S_PDT_NAME))
 	{
@@ -182,6 +200,8 @@ void CSparkUfsPdtDlg::OnBnClickedBtnScanDevice()
     // Scan connected SM3350 devices and update the UI list for Ready ports.
     // This function enumerates devices via the CSparkSm3350Util helper and
     // sets the appropriate list row to "Ready" with drive and start time.
+    // Reset previous run state when scanning devices anew
+    ResetTaskCounts(0);
     InitListViewItems();
 	UCHAR i;
 	int nTesterCnt = 0;
@@ -219,6 +239,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnScanDevice()
                                 drv.Format(_T("%hs"), strDrive);
                                 pList->SetItemText(found, 3, drv);
                                 pList->SetItemText(found, 2, _T("Ready"));
+                                if (found >= 0 && found < CSparkUfsPdtDlg::UI_THREAD_COUNT) m_portFailed[found] = false;
                                 // Update start time to current time (column index 4)
                                 CTime now = CTime::GetCurrentTime();
                                 pList->SetItemText(found, 4, now.Format(_T("%Y-%m-%d %H:%M:%S")));
@@ -237,16 +258,24 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
     // We only change the text color of the Status subitem when it
     // contains "Ready" to make it visually distinct.
 
-    LPNMLVCUSTOMDRAW pLVCD = reinterpret_cast<LPNMLVCUSTOMDRAW>(pNMHDR);
-
-    // Default processing
+    LPNMLVCUSTOMDRAW pLVCD = reinterpret_cast<LPNMLVCUSTOMDRAW>(pNMHDR);    // Default processing
     *pResult = CDRF_DODEFAULT;
+
+    // If this is the prepaint stage for the control, request item-level notifications
+    if (pLVCD->nmcd.dwDrawStage == CDDS_PREPAINT)
+    {
+        // Request item notifications so we receive ITEMPREPAINT
+        *pResult = CDRF_NOTIFYITEMDRAW;
+        return;
+    }
 
     if (pLVCD->nmcd.dwDrawStage == CDDS_ITEMPREPAINT)
     {
         // request subitem color notifications
         *pResult = CDRF_NOTIFYSUBITEMDRAW;
+        return;
     }
+
     else if (pLVCD->nmcd.dwDrawStage == (CDDS_SUBITEM | CDDS_ITEMPREPAINT))
     {
         int nItem = static_cast<int>(pLVCD->nmcd.dwItemSpec);
@@ -262,12 +291,166 @@ void CSparkUfsPdtDlg::OnNMCustomdrawListDevice(NMHDR* pNMHDR, LRESULT* pResult)
                 {
                     // set blue text color
                     pLVCD->clrText = RGB(0, 0, 255);
+                    // clear failure flag when status returns to Ready
+                    int nItemIdx = nItem;
+                    if (nItemIdx >= 0 && nItemIdx < CSparkUfsPdtDlg::UI_THREAD_COUNT)
+                    {
+                        this->m_portFailed[nItemIdx] = false;
+                    }
+                }
+                else
+                {
+                    // if not Ready, check per-port failure flag to color red
+                    int nItemIdx = nItem;
+                    if (nItemIdx >= 0 && nItemIdx < CSparkUfsPdtDlg::UI_THREAD_COUNT)
+                    {
+                        if (this->m_portFailed[nItemIdx])
+                        {
+                            pLVCD->clrText = RGB(200, 0, 0);
+                        }
+                    }
                 }
             }
         }
 
-        *pResult = CDRF_DODEFAULT;
+        // Owner-draw progress bar in Progress column
+        const int progressCol = 1;
+        if (nSubItem == progressCol)
+        {
+            CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+            if (pList && nItem >= 0 && nItem < CSparkUfsPdtDlg::UI_THREAD_COUNT)
+            {
+                CRect rcSubItem;
+                pList->GetSubItemRect(nItem, progressCol, LVIR_BOUNDS, rcSubItem);
+                rcSubItem.DeflateRect(2, 2);
+
+                // Draw background for progress cell
+                CDC* pDC = CDC::FromHandle(pLVCD->nmcd.hdc);
+                COLORREF bk = RGB(240,240,240);
+                CBrush brBk(bk);
+                pDC->FillRect(rcSubItem, &brBk);
+
+                int progress = m_portProgress[nItem];
+                bool failed = m_portFailed[nItem];
+                CRect fillRc = rcSubItem;
+                fillRc.right = fillRc.left + (fillRc.Width() * progress) / 100;
+                // Choose distinct colors: red for failed, green for complete, blue for in-progress
+                COLORREF fillColor;
+                if (failed) fillColor = RGB(200, 0, 0);
+                else if (progress >= 100) fillColor = RGB(0, 160, 0);
+                else fillColor = RGB(0, 120, 215);
+                CBrush brFill(fillColor);
+                // Draw the filled portion (only if width > 0)
+                if (fillRc.Width() > 0)
+                    pDC->FillRect(fillRc, &brFill);
+
+                // Draw border
+                CBrush brBorder(RGB(200,200,200));
+                pDC->FrameRect(rcSubItem, &brBorder);
+
+                // Draw percent text centered with contrasting color (only if progress > 0)
+                if (progress > 0)
+                {
+                    CString pct; pct.Format(_T("%d%%"), progress);
+                    HFONT hStockFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+                    CFont* pTempFont = CFont::FromHandle(hStockFont);
+                    CFont* pOldFont = pDC->SelectObject(pTempFont);
+                    pDC->SetBkMode(TRANSPARENT);
+                    // choose text color: white if filled area covers center, otherwise black
+                    CPoint center((rcSubItem.left + rcSubItem.right) / 2, (rcSubItem.top + rcSubItem.bottom) / 2);
+                    bool centerInFill = (center.x <= fillRc.right);
+                    pDC->SetTextColor(centerInFill ? RGB(255,255,255) : RGB(0,0,0));
+                    pDC->DrawText(pct, rcSubItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    pDC->SelectObject(pOldFont);
+                }
+                *pResult = CDRF_SKIPDEFAULT;
+                return;
+            }
+        }
     }
+}
+
+// Ensure overlay progress controls follow list layout when the list scrolls
+void CSparkUfsPdtDlg::RepositionProgressControls()
+{
+    // Owner-draw mode: no overlay controls to reposition.
+    // Force a redraw of the list control so the owner-draw progress bars are repainted
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (!pList) return;
+    pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+
+void CSparkUfsPdtDlg::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+{
+    CDialogEx::OnVScroll(nSBCode, nPos, pScrollBar);
+    // Coalesce rapid scroll events: restart 200ms timer
+    if (m_scrollRefreshTimer)
+    {
+        KillTimer(m_scrollRefreshTimer);
+        m_scrollRefreshTimer = 0;
+    }
+    // Force the list control to invalidate its entire client area to avoid capture remnants
+    // Force the list control to invalidate its entire client area to avoid capture remnants
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pList && ::IsWindow(pList->GetSafeHwnd()))
+    {
+        pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    }
+
+    m_scrollRefreshTimer = SetTimer(SCROLL_REFRESH_TIMER_ID, 200, nullptr);
+}
+
+void CSparkUfsPdtDlg::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+{
+    CDialogEx::OnHScroll(nSBCode, nPos, pScrollBar);
+    // Coalesce rapid scroll events: restart 200ms timer
+    if (m_scrollRefreshTimer)
+    {
+        KillTimer(m_scrollRefreshTimer);
+        m_scrollRefreshTimer = 0;
+    }
+    // Force the list control to invalidate its entire client area to avoid capture remnants
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pList && ::IsWindow(pList->GetSafeHwnd()))
+    {
+        pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    }
+
+    m_scrollRefreshTimer = SetTimer(SCROLL_REFRESH_TIMER_ID, 200, nullptr);
+}
+
+void CSparkUfsPdtDlg::OnTimer(UINT_PTR nIDEvent)
+{
+    if (nIDEvent == SCROLL_REFRESH_TIMER_ID)
+    {
+        if (m_scrollRefreshTimer)
+        {
+            KillTimer(m_scrollRefreshTimer);
+            m_scrollRefreshTimer = 0;
+        }
+        RepositionProgressControls();
+        return;
+    }
+    CDialogEx::OnTimer(nIDEvent);
+}
+
+BOOL CSparkUfsPdtDlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
+{
+    // Treat mouse wheel as scrolling: set timer to refresh
+    if (m_scrollRefreshTimer)
+    {
+        KillTimer(m_scrollRefreshTimer);
+        m_scrollRefreshTimer = 0;
+    }
+    // Force the list control to invalidate its entire client area to avoid capture remnants
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pList && ::IsWindow(pList->GetSafeHwnd()))
+    {
+        pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    }
+
+    m_scrollRefreshTimer = SetTimer(SCROLL_REFRESH_TIMER_ID, 200, nullptr);
+    return CDialogEx::OnMouseWheel(nFlags, zDelta, pt);
 }
 
 // Wrapper methods that forward to the implementation in RunPdtTaskImpl.cpp
@@ -304,9 +487,162 @@ int CSparkUfsPdtDlg::RunPdtTask(int portIndex, const CString& allocatedSn /*= CS
 LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
 {
     // UI handler for progress updates coming from worker threads.
-    // The function expects a pointer to TaskProgressMsg allocated by
-    // the worker; after processing the pointer is deleted here.
+    // New path: EventBus posts a lightweight message (wParam == 0) and UI pulls
+    // pending events from EventBus. Legacy path (pointer passed in wParam) is
+    // still supported for backward compatibility.
 
+    if (wParam == 0)
+    {
+        // Pull events from EventBus
+        auto events = spark::ufspdt::EventBus::Instance().ConsumeAll(this->GetSafeHwnd());
+        for (const auto& evt : events)
+        {
+            int port = evt.portIndex;
+            int progress = evt.progress;
+            int result = evt.result;
+            // convert UTF-8 to CString (TCHAR)
+            CString status = CA2T(evt.status.c_str(), CP_UTF8);
+
+            // update progress control and status column
+            if (port >= 0 && port < UI_THREAD_COUNT)
+            {
+                // update owner-draw progress state
+                m_portProgress[port] = progress;
+
+                CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+                if (pList)
+                {
+                    CString portName; portName.Format(_T("Port %d"), port + 1);
+                    LVFINDINFO fi = { 0 }; fi.flags = LVFI_STRING; fi.psz = portName;
+                    int idx = pList->FindItem(&fi);
+                    const int progressCol = 1;
+                    CRect rcSubItem;
+                    if (idx >= 0)
+                    {
+                        // owner-draw will handle rendering; invalidate the subitem to force repaint
+                        pList->GetSubItemRect(idx, progressCol, LVIR_BOUNDS, rcSubItem);
+                        rcSubItem.DeflateRect(2, 2);
+                        pList->InvalidateRect(rcSubItem);
+                        pList->UpdateWindow();
+                        // Keep Progress cell text empty; owner-draw displays percent inside the cell
+                        pList->SetItemText(idx, progressCol, _T(""));
+                        // Immediate draw to ensure visibility even if custom-draw isn't invoked yet
+                        {
+                            HDC hdc = ::GetDC(pList->GetSafeHwnd());
+                            if (hdc)
+                            {
+                                CDC dc; dc.Attach(hdc);
+                                int progressLocal = m_portProgress[port];
+                                bool failedLocal = m_portFailed[port];
+                                CRect fillRc = rcSubItem; fillRc.right = fillRc.left + (fillRc.Width() * progressLocal) / 100;
+                                COLORREF fillColor = failedLocal ? RGB(200,0,0) : (progressLocal >= 100 ? RGB(0,160,0) : RGB(0,120,215));
+                                CBrush br(fillColor);
+                                if (fillRc.Width() > 0) dc.FillRect(fillRc, &br);
+                                // border
+                                CBrush brBorder(RGB(200,200,200));
+                                dc.FrameRect(rcSubItem, &brBorder);
+                                // text
+                                CString pct; pct.Format(_T("%d%%"), progressLocal);
+                                HFONT hStockFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+                                CFont* pTempFont = CFont::FromHandle(hStockFont);
+                                CFont* pOldFont = dc.SelectObject(pTempFont);
+                                dc.SetBkMode(TRANSPARENT);
+                                dc.SetTextColor(RGB(0,0,0));
+                                dc.DrawText(pct, rcSubItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                                dc.SelectObject(pOldFont);
+                                dc.Detach();
+                                ::ReleaseDC(pList->GetSafeHwnd(), hdc);
+                            }
+                        }
+
+                        if (result == 0 || result == ERROR_SUCCESS)
+                        {
+                            pList->SetItemText(idx, 2, status);
+                        }
+                        else
+                        {
+                            CString st; st.Format(_T("%s (0x%X)"), status.GetString(), result);
+                            pList->SetItemText(idx, 2, st);
+                        }
+
+                        if (progress >= 100)
+                        {
+                            CTime t = CTime::GetCurrentTime();
+                            pList->SetItemText(idx, 4, t.Format(_T("%Y-%m-%d %H:%M:%S")));
+                        }
+                    }
+                    // compute failure state based on incoming result and previous flag
+                    bool failedNow = (result != 0) || m_portFailed[port];
+                    m_portFailed[port] = failedNow;
+                    // Invalidate subitem again in case failure coloring changed
+                    if (idx >= 0)
+                    {
+                        pList->InvalidateRect(rcSubItem);
+                    }
+                }
+
+                // group/complete handling for this port
+                const bool earlyFailForGroup = (progress < 100 && result != 0 && m_portGroupIdx[port] >= 0 && m_portGroupIdx[port] < 2);
+                if ((progress >= 100 || earlyFailForGroup) && !m_portCompleted[port])
+                {
+                    m_portCompleted[port] = true;
+                    if (result == 0 || result == ERROR_SUCCESS)
+                    {
+                        m_passCount++;
+                    }
+                    else
+                    {
+                        m_failCount++;
+                        m_portFailed[port] = true; // ensure failed flag set for final failure
+                    }
+                    UpdateStatusBarText();
+
+                    if (m_activeTaskCount > 0)
+                    {
+                        --m_activeTaskCount;
+                        if (m_activeTaskCount == 0 && m_scanButtonDisabledByRun)
+                        {
+                            SetScanButtonEnabled(true);
+                            m_scanButtonDisabledByRun = false;
+                        }
+                    }
+
+                    int g = m_portGroupIdx[port];
+                    int pos = m_portGroupPos[port];
+                    if (g >= 0 && g < 2 && pos >= 0 && pos < MACHINE_DEVICE_CNT && m_groupPending[g] > 0)
+                    {
+                        m_groupResult[g][pos] = static_cast<WORD>((result == 0 || result == ERROR_SUCCESS) ? 0x0001 : (result & 0xFFFF));
+                        m_groupPending[g]--;
+                        if (m_groupPending[g] == 0)
+                        {
+                            m_factorySerial.SendGroupTestDone(static_cast<BYTE>(g), m_groupResult[g]);
+                            for (int i = 0; i < UI_THREAD_COUNT; ++i)
+                            {
+                                if (m_portGroupIdx[i] == g)
+                                {
+                                    m_portGroupIdx[i] = -1;
+                                    m_portGroupPos[i] = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Safety: ensure active task count never negative and re-enable Scan if all tasks finished
+        if (m_activeTaskCount <= 0)
+        {
+            m_activeTaskCount = 0;
+            if (m_scanButtonDisabledByRun)
+            {
+                SetScanButtonEnabled(true);
+                m_scanButtonDisabledByRun = false;
+            }
+        }
+        return 0;
+    }
+
+    // legacy path: wParam is pointer to TaskProgressMsg allocated by worker
     TaskProgressMsg* msg = reinterpret_cast<TaskProgressMsg*>(wParam);
     if (!msg) return 0;
     int port = msg->portIndex;
@@ -317,7 +653,27 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
     // update progress control and status column
     if (port >=0 && port < UI_THREAD_COUNT)
     {
-        m_progress[port].SetPos(progress);
+        // Legacy path: update owner-draw state and invalidate subitem so it repaints
+        bool failedNow = (result != 0) || m_portFailed[port];
+        m_portFailed[port] = failedNow;
+        m_portProgress[port] = progress;
+        CListCtrl* pListLegacy = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+        if (pListLegacy)
+        {
+            CString portName; portName.Format(_T("Port %d"), port+1);
+            LVFINDINFO fi = {0}; fi.flags = LVFI_STRING; fi.psz = portName;
+            int idx = pListLegacy->FindItem(&fi);
+            if (idx >= 0)
+            {
+                CRect rcSubItem;
+                const int progressCol = 1;
+                pListLegacy->GetSubItemRect(idx, progressCol, LVIR_BOUNDS, rcSubItem);
+                pListLegacy->InvalidateRect(rcSubItem);
+                pListLegacy->UpdateWindow();
+                // keep progress text empty; visual percent rendered by owner-draw
+                pListLegacy->SetItemText(idx, progressCol, _T(""));
+            }
+        }
         CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
         if (pList)
         {
@@ -326,12 +682,23 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
             int idx = pList->FindItem(&fi);
             if (idx >= 0)
             {
+                // reposition overlay progress control to match cell
+                CRect rcSubItem;
+                const int progressCol = 1;
+                pList->GetSubItemRect(idx, progressCol, LVIR_BOUNDS, rcSubItem);
+                rcSubItem.DeflateRect(2, 2);
+                // overlay controls removed; no reposition required
+
                 if (result == 0 || result == ERROR_SUCCESS)
+                {
                     pList->SetItemText(idx, 2, status);
+                    if (port >= 0 && port < UI_THREAD_COUNT) m_portFailed[port] = false;
+                }
                 else
                 {
                     CString st; st.Format(_T("%s (0x%X)"), status.GetString(), result);
                     pList->SetItemText(idx, 2, st);
+                    if (port >= 0 && port < UI_THREAD_COUNT) m_portFailed[port] = true;
                 }
                 if (progress >= 100)
                 {
@@ -392,7 +759,17 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
     }
 
     // The TaskProgressMsg pointer was allocated by the worker (DialogAdapter).
-    // Free it here to avoid leaking memory for every progress notification.
+    // Free it here to avoid leaking memory for legacy callers.
+    // Safety: ensure active task count never negative and re-enable Scan if all tasks finished
+    if (m_activeTaskCount <= 0)
+    {
+        m_activeTaskCount = 0;
+        if (m_scanButtonDisabledByRun)
+        {
+            SetScanButtonEnabled(true);
+            m_scanButtonDisabledByRun = false;
+        }
+    }
     delete msg;
     return 0;
 }
@@ -545,16 +922,26 @@ void CSparkUfsPdtDlg::OnDestroy()
     m_factoryComLinkedBrushGreen.DeleteObject();
     m_factoryComLinkedBrushRed.DeleteObject();
     m_pdtNameFont.DeleteObject();
+
+    // Unregister EventBus entries for this window to avoid posting to destroyed HWND
+    spark::ufspdt::EventBus::Instance().Unregister(this->GetSafeHwnd());
+
 }
+
+// List subclass removed: rely on NM_CUSTOMDRAW owner-draw path for progress rendering
 
 void CSparkUfsPdtDlg::CreateListViewColumns()
 {
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     if (pList)
     {
-        // Set list view style to report view
+        // Ensure list is in report mode and not owner-drawn by template
+        // Remove LVS_OWNERDRAWFIXED if template set it, then enable report style.
+        pList->ModifyStyle(LVS_OWNERDRAWFIXED, 0);
         pList->ModifyStyle(0, LVS_REPORT | LVS_SHOWSELALWAYS);
-        pList->SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+        // Enable full-row select, grid lines and double buffering to reduce flicker
+        pList->SetExtendedStyle(pList->GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+        // list styles configured
 
         // Define columns used by the UI
         pList->InsertColumn(0, _T("Port"), LVCFMT_LEFT, 60);
@@ -574,7 +961,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             CString port;
             port.Format(_T("Port %d"), i + 1);
             int idx = pList->InsertItem(i, port);
-            pList->SetItemText(idx, 1, _T("")); // Progress column will be covered by progress control
+                pList->SetItemText(idx, 1, _T(""));
             pList->SetItemText(idx, 2, _T(""));
             pList->SetItemText(idx, 3, _T("")); // Drive
             pList->SetItemText(idx, 4, _T(""));
@@ -585,27 +972,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             pList->SetItemText(idx, 9, _T("")); // FW Version
         }
 
-        // Create an overlay progress control for the Progress column on
-        // each list row and position it correctly inside the dialog.
-        const int progressCol = 1;
-        for (int i = 0; i < CSparkUfsPdtDlg::UI_THREAD_COUNT; ++i)
-        {
-            // Ensure the item is visible so we can retrieve the subitem rectangle
-            pList->EnsureVisible(i, FALSE);
-            CRect rcSubItem;
-            // GetSubItemRect returns coordinates in the list's client space; keep them as-is
-            pList->GetSubItemRect(i, progressCol, LVIR_BOUNDS, rcSubItem);
-
-            int nProgressId = CSparkUfsPdtDlg::IDC_S_UI_THREAD_BASE + CSparkUfsPdtDlg::UI_THREAD_COUNT + i;
-            // Create the progress control as a child of the list control so it will be
-            // properly clipped and will not be drawn under the list when the list redraws
-            if (!m_progress[i].Create(WS_CHILD | WS_VISIBLE | PBS_SMOOTH, rcSubItem, pList, nProgressId))
-            {
-                // failed to create, continue
-            }
-            m_progress[i].SetRange(0, 100);
-            m_progress[i].SetPos(0);
-        }
+        // Progress will be rendered by owner-draw in NM_CUSTOMDRAW
     }
 }
 
@@ -613,7 +980,7 @@ void CSparkUfsPdtDlg::InitListViewItems()
 {
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     {
-        // Insert rows and create a small progress control over the Progress cell
+        // Insert rows for list; progress will be drawn via NM_CUSTOMDRAW
         for (int i = 0; i < CSparkUfsPdtDlg::UI_THREAD_COUNT; ++i)
         {
             CString port;
@@ -629,17 +996,45 @@ void CSparkUfsPdtDlg::InitListViewItems()
             pList->SetItemText(i, 9, _T("")); // FW Version
         }
 
-        // Create an overlay progress control for the Progress column on
-        // each list row and position it correctly inside the dialog.
+        // Initialize per-port owner-draw state
         for (int i = 0; i < CSparkUfsPdtDlg::UI_THREAD_COUNT; ++i)
         {
-            // Ensure the item is visible so we can retrieve the subitem rectangle
-            pList->EnsureVisible(i, FALSE);
-            m_progress[i].SetRange(0, 100);
-            m_progress[i].SetPos(0);
+            m_portProgress[i] = 0;
             m_strwSn[i]=CStringW(L"",128);
         }
     }
+}
+
+void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
+{
+    // Reset internal per-port state and update list UI to clear progress/status/time/serial
+    m_totalCount = totalCount;
+    m_passCount = 0;
+    m_failCount = 0;
+    m_activeTaskCount = 0;
+    m_scanButtonDisabledByRun = false;
+    for (int i = 0; i < UI_THREAD_COUNT; ++i)
+    {
+        m_portProgress[i] = 0;
+        m_portFailed[i] = false;
+        m_portCompleted[i] = false;
+        m_strwSn[i] = CStringW(L"", 128);
+    }
+
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (pList)
+    {
+        for (int i = 0; i < UI_THREAD_COUNT; ++i)
+        {
+            pList->SetItemText(i, 1, _T(""));
+            pList->SetItemText(i, 2, _T(""));
+            pList->SetItemText(i, 3, _T(""));
+            pList->SetItemText(i, 4, _T(""));
+            pList->SetItemText(i, 6, _T(""));
+        }
+        pList->RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
+    }
+    UpdateStatusBarText();
 }
 
 HBRUSH CSparkUfsPdtDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
@@ -1041,17 +1436,7 @@ void CSparkUfsPdtDlg::UpdateStatusBarText()
     m_statusBar.SetText(text, 2, 0);
 }
 
-void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
-{
-    m_totalCount = totalCount;
-    m_passCount = 0;
-    m_failCount = 0;
-    for (int i = 0; i < UI_THREAD_COUNT; ++i)
-    {
-        m_portCompleted[i] = false;
-    }
-    UpdateStatusBarText();
-}
+
 
 void CSparkUfsPdtDlg::OnSize(UINT nType, int cx, int cy)
 {

@@ -365,6 +365,8 @@
     <ClInclude Include="DataFormatter.h" />
     <ClInclude Include="DialogAdapter.h" />
     <ClInclude Include="ErrorCode.h" />
+    <ClInclude Include="EventBus.h" />
+    <ClInclude Include="EventMessages.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="ILogger.h" />
     <ClInclude Include="ISettingsProvider.h" />
@@ -390,6 +392,7 @@
     <ClCompile Include="CImpState.cpp" />
     <ClCompile Include="CSerialPort.cpp" />
     <ClCompile Include="DataFormatter.cpp" />
+    <ClCompile Include="EventBus.cpp" />
     <ClCompile Include="IspMarkCache.cpp" />
     <ClCompile Include="MemoryLeakHelper.cpp" />
     <ClCompile Include="pch.cpp">

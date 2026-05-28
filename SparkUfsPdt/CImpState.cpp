@@ -112,7 +112,6 @@ bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
 int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("PowerOff"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -135,7 +134,7 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("Rebooting"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -163,7 +162,7 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("CardInit"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -206,7 +205,7 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("UpiuForceRom"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -225,7 +224,7 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VccOffForceRom"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -244,7 +243,7 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("MpStart"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -265,7 +264,6 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     BOOL bFuncOption = pOpt ? pOpt->mainPrm.funcSel : FALSE;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("Write1024KIspMp"));
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -284,7 +282,7 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("MpExit"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -401,7 +399,7 @@ int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("SetSn"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -424,7 +422,7 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("SetMdt"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -449,7 +447,7 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char ispString[16] = { 0 };
     char pData[512 * 8] = { 0 };
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyISP"));
+
     GetIspMark(ispString);
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
@@ -476,7 +474,7 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
 int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("WriteSram"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -498,7 +496,7 @@ int CImpState::VerifySram1Stage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
     char pData[512 * 8] = { 0 };
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySram"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -526,7 +524,7 @@ int CImpState::VerifySram2Stage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char pData1[512 * 8] = { 0 };
     char pData2[512 * 8] = { 0 };
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySram"));
+
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
@@ -665,7 +663,7 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
 #define MID_DATA_OFFSET (16 * 20 + 4)
 #define PNM_DATA_OFFSET (16 * 44 + 6)
 #define PSN_DATA_OFFSET (16 * 76 + 2)
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyCid"));
+
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     if (pOpt == nullptr)
@@ -803,7 +801,7 @@ int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char pData[512] = { 0 };
 
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifyGeometry"));
+
 
     if (!settings_) return ERR_INVALID_DATA;
     PUFS_OPTION pOpt = settings_->GetUfsOption();
@@ -846,7 +844,7 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
     char pData[512 * 0x03] = { 0 };
     CStringW strSn;
 #define PSN_DATA_OFFSET (16 * 76)
-    if (notifier_) notifier_->PostTaskProgress(portIndex, 0, 0, _T("VerifySn"));
+
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     if (pOpt == nullptr)

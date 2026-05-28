@@ -93,6 +93,12 @@
     <ClInclude Include="libsparkusb.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="EventBus.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="EventMessages.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SparkUfsPdt.cpp">
@@ -147,6 +153,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="MemoryLeakHelper.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="EventBus.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

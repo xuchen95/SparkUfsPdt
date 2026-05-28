@@ -5,6 +5,8 @@
 #include "SparkUfsPdtDlg.h"
 #include "CDialogBase.h"
 #include "SettingsService.h"
+#include "EventBus.h"
+#include "EventMessages.h"
 
 class DialogAdapter : public ISettingsProvider, public ILogger, public IUiNotifier
 {
@@ -49,8 +51,16 @@ public:
 	void PostTaskProgress(int portIndex, int progress, int result, const CString& status) override
 	{
 		if (!dlg_) return;
-		CSparkUfsPdtDlg::TaskProgressMsg* pmsg = new CSparkUfsPdtDlg::TaskProgressMsg{portIndex, progress, result, status};
-		dlg_->PostMessage(CSparkUfsPdtDlg::WM_TASK_PROGRESS, (WPARAM)pmsg, 0);
+		// Publish event to EventBus for the dialog to consume on UI thread.
+		spark::ufspdt::ProgressEvent evt;
+		evt.portIndex = portIndex;
+		evt.progress = progress;
+		evt.result = result;
+		// convert CString (TCHAR) to UTF-8 std::string
+		CT2A conv(status, CP_UTF8);
+		evt.status = std::string(conv);
+		// Use the dialog window handle as the target
+		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
 	}
 
 private:

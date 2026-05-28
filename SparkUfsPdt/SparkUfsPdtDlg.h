@@ -10,6 +10,7 @@
 #include "SerialDef.h"
 extern char g_UfsIsp[UFS_ISP_SIZE];
 #include "CImpState.h"
+#include "EventMessages.h"
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogBase
@@ -52,11 +53,15 @@ protected:
     static constexpr int IDC_S_UI_THREAD_BASE = 2000;
     static constexpr int IDC_STATUS_BAR = 3000;
 
-    // Fix: declare progress control array
-    CProgressCtrl m_progress[UI_THREAD_COUNT];
+    // Progress values for owner-draw rendering
+    // (overlay controls removed)
 public:
     afx_msg void OnBnClickedBtnStartPdt();
+    afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+    afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
     afx_msg void OnSize(UINT nType, int cx, int cy);
+    afx_msg void OnTimer(UINT_PTR nIDEvent);
+    afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
     afx_msg void OnSettingConfig();
     afx_msg void OnCbnSelchangeCbComSel();
 
@@ -67,9 +72,9 @@ public:
 	static std::unique_ptr<class ThreadPool> s_pool;
 
     // Custom message for worker threads to report progress to the UI thread.
-    static const UINT WM_TASK_PROGRESS = (WM_USER + 0x65);
+    static const UINT WM_TASK_PROGRESS = MSG_WM_TASK_PROGRESS;
     // Synchronous request from worker thread to retrieve SerialNo text for a port.
-    static const UINT WM_GET_PORT_SN = (WM_USER + 0x70);
+    static const UINT WM_GET_PORT_SN = MSG_WM_GET_PORT_SN;
     afx_msg LRESULT OnTaskProgress(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFactoryCmdDownload(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam);
@@ -98,11 +103,16 @@ public:
 
     void CreateListViewColumns();
     void InitListViewItems();
+    void RepositionProgressControls();
     void UpdatePdtNameText();
     void InitStatusBar();
     void UpdateStatusBarLayout();
     void UpdateStatusBarText();
     void ResetTaskCounts(int totalCount);
+
+    // Timer id used to coalesce frequent scroll events and refresh overlays
+    static constexpr UINT_PTR SCROLL_REFRESH_TIMER_ID = 0x1001;
+    UINT_PTR m_scrollRefreshTimer = 0;
 
 private:
     bool LoadSettingFromPath(const CString& path, bool showError);
@@ -135,6 +145,8 @@ private:
     int m_passCount = 0;
     int m_failCount = 0;
     bool m_portCompleted[UI_THREAD_COUNT] = {};
+    bool m_portFailed[UI_THREAD_COUNT] = {};
+    int  m_portProgress[UI_THREAD_COUNT] = {};
 
     CSerialPort m_factorySerial;
     int m_portGroupIdx[UI_THREAD_COUNT] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
@@ -143,4 +155,8 @@ private:
     WORD m_groupResult[2][MACHINE_DEVICE_CNT] = {};
 public:
     CStringW m_strwSn[UI_THREAD_COUNT];
+    // Subclass handling removed; rely on NM_CUSTOMDRAW for custom painting
+    // Accessors used by list subclass drawing
+    int GetPortProgress(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portProgress[idx] : 0; }
+    bool IsPortFailed(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portFailed[idx] : false; }
 };
