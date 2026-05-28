@@ -35,6 +35,35 @@ namespace
     // Owner-draw rendering used for progress column.
 }
 
+void CSparkUfsPdtDlg::UpdatePortStatus(int portIndex, const CString& status)
+{
+    if (portIndex < 0 || portIndex >= UI_THREAD_COUNT) return;
+    CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+    if (!pList) return;
+    CString portName; portName.Format(_T("Port %d"), portIndex + 1);
+    LVFINDINFO fi = {0}; fi.flags = LVFI_STRING; fi.psz = portName;
+    int idx = pList->FindItem(&fi);
+    if (idx >= 0)
+    {
+        // Only update Status column (index 2)
+        pList->SetItemText(idx, 2, status);
+        // If status returns to Ready, clear failure flag so progress renders green/normal
+        if (status.CompareNoCase(_T("Ready")) == 0)
+        {
+            if (portIndex >= 0 && portIndex < UI_THREAD_COUNT) m_ports[portIndex].failed = false;
+        }
+
+        // Invalidate the progress subitem and the status subitem so owner-draw repaints
+        CRect rcStatus, rcProgress;
+        pList->GetSubItemRect(idx, 2, LVIR_BOUNDS, rcStatus);
+        pList->GetSubItemRect(idx, 1, LVIR_BOUNDS, rcProgress);
+        // Slight deflate to match drawing margins
+        rcProgress.DeflateRect(2, 2);
+        pList->InvalidateRect(rcStatus);
+        pList->InvalidateRect(rcProgress);
+    }
+}
+
 
 // CSparkUfsPdtDlg dialog
 
@@ -504,8 +533,11 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
             // update progress control and status column
             if (port >= 0 && port < UI_THREAD_COUNT)
             {
-                // update owner-draw progress state
-                m_ports[port].progress = progress;
+                // update owner-draw progress state only if sender provided a non-negative progress
+                if (progress >= 0)
+                {
+                    m_ports[port].progress = progress;
+                }
 
                 CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
                 if (pList)
@@ -555,11 +587,28 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
 
                         if (result == 0 || result == ERROR_SUCCESS)
                         {
-                            pList->SetItemText(idx, 2, status);
+                            // Use UpdatePortStatus to update only the status column for stage entries
+                            UpdatePortStatus(port, status);
                         }
                         else
                         {
-                            CString st; st.Format(_T("%s (0x%X)"), status.GetString(), result);
+                            // Ensure failure text includes a ' Failed' suffix for clarity.
+                            CString st;
+                            CString stat = status;
+                            CString up = stat;
+                            up.MakeUpper();
+                            if (stat.IsEmpty())
+                            {
+                                st.Format(_T("Failed (0x%X)"), result);
+                            }
+                            else if (up.Find(_T("FAILED")) >= 0)
+                            {
+                                st.Format(_T("%s (0x%X)"), stat.GetString(), result);
+                            }
+                            else
+                            {
+                                st.Format(_T("%s Failed (0x%X)"), stat.GetString(), result);
+                            }
                             pList->SetItemText(idx, 2, st);
                         }
 
@@ -580,8 +629,13 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 }
 
                 // group/complete handling for this port
+                // Treat any non-zero result as a terminal failure so the port is
+                // marked completed and active task counts are decremented. This
+                // ensures Scan Device is re-enabled after QC failures where we
+                // intentionally preserved the last progress (<100).
                 const bool earlyFailForGroup = (progress < 100 && result != 0 && m_ports[port].groupIdx >= 0 && m_ports[port].groupIdx < 2);
-                if ((progress >= 100 || earlyFailForGroup) && !m_ports[port].completed)
+                const bool failureFinal = (progress < 100 && result != 0);
+                if ((progress >= 100 || earlyFailForGroup || failureFinal) && !m_ports[port].completed)
                 {
                     m_ports[port].completed = true;
                     if (result == 0 || result == ERROR_SUCCESS)
@@ -646,7 +700,7 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
         // Legacy path: update owner-draw state and invalidate subitem so it repaints
         bool failedNow = (result != 0) || m_ports[port].failed;
         m_ports[port].failed = failedNow;
-        m_ports[port].progress = progress;
+        if (progress >= 0) m_ports[port].progress = progress;
         CListCtrl* pListLegacy = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
         if (pListLegacy)
         {
@@ -681,12 +735,28 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
 
                 if (result == 0 || result == ERROR_SUCCESS)
                 {
-                    pList->SetItemText(idx, 2, status);
+                    UpdatePortStatus(port, status);
                     if (port >= 0 && port < UI_THREAD_COUNT) m_ports[port].failed = false;
                 }
                 else
                 {
-                    CString st; st.Format(_T("%s (0x%X)"), status.GetString(), result);
+                    // Legacy path: make sure failure text is clear and includes 'Failed'
+                    CString st;
+                    CString stat = status;
+                    CString up = stat;
+                    up.MakeUpper();
+                    if (stat.IsEmpty())
+                    {
+                        st.Format(_T("Failed (0x%X)"), result);
+                    }
+                    else if (up.Find(_T("FAILED")) >= 0)
+                    {
+                        st.Format(_T("%s (0x%X)"), stat.GetString(), result);
+                    }
+                    else
+                    {
+                        st.Format(_T("%s Failed (0x%X)"), stat.GetString(), result);
+                    }
                     pList->SetItemText(idx, 2, st);
                     if (port >= 0 && port < UI_THREAD_COUNT) m_ports[port].failed = true;
                 }
@@ -700,8 +770,9 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
     }
 
     const bool earlyFailForGroup = (progress < 100 && result != 0 && port >= 0 && port < UI_THREAD_COUNT && m_ports[port].groupIdx >= 0 && m_ports[port].groupIdx < 2);
+    const bool failureFinal = (progress < 100 && result != 0 && port >= 0 && port < UI_THREAD_COUNT);
 
-    if ((progress >= 100 || earlyFailForGroup) && port >= 0 && port < UI_THREAD_COUNT)
+    if ((progress >= 100 || earlyFailForGroup || failureFinal) && port >= 0 && port < UI_THREAD_COUNT)
     {
         if (!m_ports[port].completed)
         {

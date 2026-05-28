@@ -22,6 +22,7 @@ namespace
             return false;
         }
 
+
         char part2Str[5] = { 0 };
         char part3Str[9] = { 0 };
         memcpy(part2Str, ispMark + 4, 4);
@@ -59,6 +60,25 @@ namespace
         outBuf[7] = static_cast<BYTE>((part3Value >> 24) & 0xFF);
         memcpy(outBuf + 8, ispMark, 4);                             // M53B -> 4D 35 33 42
         return true;
+    }
+
+    // Return a friendly stage name from a compiler function name like
+    // "CImpState::PowerOffStage" -> "PowerOff" (remove class prefix and trailing "Stage").
+    static CString StageNameFromFunction(const TCHAR* func)
+    {
+        CString s(func);
+        // strip class qualifier if present (find last "::")
+        int idx = s.ReverseFind(':');
+        if (idx > 0 && idx - 1 >= 0 && s[idx - 1] == ':')
+        {
+            s = s.Mid(idx + 1);
+        }
+        // remove trailing "Stage" if present
+        if (s.GetLength() > 5 && s.Right(5).CompareNoCase(_T("Stage")) == 0)
+        {
+            s = s.Left(s.GetLength() - 5);
+        }
+        return s;
     }
 }
 
@@ -115,6 +135,12 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        // Use progress -1 to indicate 'status-only' update that should not overwrite
+        // the current numeric progress value maintained by the orchestrator.
+        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
     do
     {
         if ((ret = sm3350.UfsPowerOff()) != ERROR_SUCCESS) break;
@@ -123,7 +149,12 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("PowerOff Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            // Status should remain the stage name; result conveys failure
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "PowerOff Failed", _TRUNCATE);
@@ -138,7 +169,11 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    char pData[512 * 8] = { 0 };
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
+    //char pData[512 * 8] = { 0 };
     //DEBUG data
     //SetMdtData(pDlg, pData);
     //SetSnData(pDlg, portIndex, pData);
@@ -151,7 +186,11 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("Reboot Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "Reboot Failed", _TRUNCATE);
@@ -166,11 +205,19 @@ int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
 
     ret = sm3350.UfsCardInit();
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("CardInit Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "CardInit Failed", _TRUNCATE);
@@ -187,6 +234,10 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
     {
         bForceRomMode = settings_->GetBaseSetting()->ForceRomMode ? FALSE : FALSE; // preserve behavior for now
     }
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
     do
     {
         if (UPIU_FORCE_ROM_MODE == bForceRomMode)
@@ -198,6 +249,14 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
             if ((ret = VccOffForceRomStage(portIndex, lg)) != ERROR_SUCCESS) break;
         }
     } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
+    }
     Sleep(300);
     return ret;
 }
@@ -206,14 +265,22 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
 
-
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
 
     ret = sm3350.UpiuForceRom();
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("UpiuForceRom Failed"));
+        if (notifier_)
+        {
+            CString status;
+            status.Format(_T("%s Failed"), _T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, 0, ret, status);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "UpiuForceRom Failed", _TRUNCATE);
@@ -228,11 +295,20 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, 0, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
 
     ret = sm3350.VccOffForceRom();
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VccOffForceRom Failed"));
+        if (notifier_)
+        {
+            CString status;
+            status.Format(_T("%s Failed"), _T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, 0, ret, status);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VccOffForceRom Failed", _TRUNCATE);
@@ -247,11 +323,19 @@ int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        notifier_->PostTaskProgress(portIndex, 0, 0, StageNameFromFunction(_T(__FUNCTION__)));
+    }
 
     ret = sm3350.UfsMpStartMode();
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("MpStart Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "MpStart Failed", _TRUNCATE);
@@ -267,11 +351,21 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        CString stage; stage.Format(_T("%s"), _T(__FUNCTION__));
+        if (stage.Right(5).CompareNoCase(_T("Stage")) == 0) stage = stage.Left(stage.GetLength() - 5);
+        notifier_->PostTaskProgress(portIndex, -1, 0, stage);
+    }
 
     ret = sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("Write1024KIspMp Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "Write1024KIspMp Failed", _TRUNCATE);
@@ -286,11 +380,21 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    if (notifier_)
+    {
+        CString stage; stage.Format(_T("%s"), _T(__FUNCTION__));
+        if (stage.Right(5).CompareNoCase(_T("Stage")) == 0) stage = stage.Left(stage.GetLength() - 5);
+        notifier_->PostTaskProgress(portIndex, -1, 0, stage);
+    }
 
     ret = sm3350.UfsMpExit();
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("MpExit Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "MpExit Failed", _TRUNCATE);
@@ -410,7 +514,11 @@ int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("SetSn Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "SetSn Failed", _TRUNCATE);
@@ -434,7 +542,11 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("SetMdt Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "SetMdt Failed", _TRUNCATE);
@@ -463,7 +575,11 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyISP Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyISP Failed", _TRUNCATE);
@@ -484,7 +600,11 @@ int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("WriteSram Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "WriteSram Failed", _TRUNCATE);

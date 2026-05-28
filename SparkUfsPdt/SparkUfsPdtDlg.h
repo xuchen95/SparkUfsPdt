@@ -110,6 +110,9 @@ public:
     void UpdateStatusBarLayout();
     void UpdateStatusBarText();
     void ResetTaskCounts(int totalCount);
+    // Update only the Status column text for a given port (0-based index) without
+    // modifying other per-port state or UI properties.
+    void UpdatePortStatus(int portIndex, const CString& status);
 
     // Timer id used to coalesce frequent scroll events and refresh overlays
     static constexpr UINT_PTR SCROLL_REFRESH_TIMER_ID = 0x1001;

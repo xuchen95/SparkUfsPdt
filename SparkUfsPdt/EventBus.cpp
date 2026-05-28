@@ -108,17 +108,37 @@ void EventBus::Publish(HWND target, const ProgressEvent& evt)
 	// Protect slot update with per-entry lock to avoid races with ConsumeAll
 	{
 		std::lock_guard<std::mutex> lk(entryPtr->lock);
-		entryPtr->slots[p].evt = evt;
-		entryPtr->slots[p].dirty.store(true, std::memory_order_release);
+		auto &slot = entryPtr->slots[p];
+		// If this is a status-only update (progress < 0), preserve any
+		// previously stored numeric progress and only update status/result.
+		if (evt.progress >= 0)
+		{
+			slot.evt = evt;
+		}
+		else
+		{
+			slot.evt.status = evt.status;
+			slot.evt.result = evt.result;
+			// leave slot.evt.progress untouched
+		}
+		slot.dirty.store(true, std::memory_order_release);
 	}
 
-	// Notify UI thread (only once when pending flips from false to true)
+	// Notify UI thread. If this update includes a numeric progress value
+	// (progress >= 0) we ensure the UI is notified immediately; otherwise
+	// use throttling/aggregation for status-only updates.
 	bool expected = false;
-	if (entryPtr->pending.compare_exchange_strong(expected, true))
+	bool mustNotifyNow = (evt.progress >= 0);
+	if (mustNotifyNow)
 	{
-		// Throttle rapid notifications to avoid overwhelming UI. If the last
-		// notification happened recently, schedule a delayed notifier; otherwise
-		// post immediately. Use steady_clock for monotonic timing.
+		// mark pending and post immediately
+		entryPtr->pending.store(true);
+		entryPtr->lastNotifyMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(), std::memory_order_relaxed);
+		::PostMessage(target, MSG_WM_TASK_PROGRESS, 0, 0);
+	}
+	else if (entryPtr->pending.compare_exchange_strong(expected, true))
+	{
+		// Throttle rapid notifications to avoid overwhelming UI.
 		constexpr long long THROTTLE_MS = 50; // milliseconds
 		using clock = std::chrono::steady_clock;
 		auto nowTp = clock::now();

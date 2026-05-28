@@ -8,7 +8,6 @@
 #include "libsparkusb.h"
 #include "../SparkLog/SparkLog.h"
 #include "CImpState.h"
-#include "StagePipeline.h"
 #include "DialogAdapter.h"
 
 using namespace spark::sm3350;
@@ -69,6 +68,7 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
     CStringA timeA(now.Format(_T("%H:%M:%S")));
     strncpy_s(lg.start_date, _countof(lg.start_date), dateA.GetString(), _TRUNCATE);
     strncpy_s(lg.start_time, _countof(lg.start_time), timeA.GetString(), _TRUNCATE);
+    CString lastStageName = _T("");
     int selectRet = sm3350.DeviceSelect(u08PhyIdx);
     if (selectRet == ERROR_SUCCESS)
     {
@@ -109,16 +109,13 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
         for (size_t i = 0; i < total; ++i)
         {
             int progress = static_cast<int>((i * 100) / total);
+            // remember last stage name for potential failure reporting
+            lastStageName = stages[i].second;
             if (notifier) notifier->PostTaskProgress(portIndex, progress, 0, stages[i].second);
             int stageRet = ERROR_SUCCESS;
             switch (stages[i].first)
             {
-            case ST_Reboot:
-            {
-                RebootStage rebootStage([](TaskContext& c) { return c.state->RebootStage(c.portIndex, *c.lg); });
-                stageRet = state->RebootStage(portIndex, lg);
-                break;
-            }
+            case ST_Reboot: stageRet = state->RebootStage(portIndex, lg); break;
             case ST_ForceRom: stageRet = state->ForceRomStage(portIndex, lg); break;
             case ST_MpStart: stageRet = state->MpStartStage(portIndex, lg); break;
             case ST_Write1024KIspMp: stageRet = state->Write1024KIspMpStage(portIndex, lg); break;
@@ -128,13 +125,14 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
             case ST_SetSn: stageRet = state->SetSnStage(portIndex, lg); break;
             case ST_VerifySn: stageRet = state->VerifySnStage(portIndex, lg); break;
             case ST_VerifyIsp: stageRet = state->VerifyIspStage(portIndex, lg); break;
-            case ST_PowerOff:
-            {
-                PowerOffStage powerOffStage([](TaskContext& c) { return c.state->PowerOffStage(c.portIndex, *c.lg); });
-                stageRet = state->PowerOffStage(portIndex, lg);
-                break;
-            }
+            case ST_PowerOff: stageRet = state->PowerOffStage(portIndex, lg); break;
             default: stageRet = ERROR_INVALID_PARAMETER; break;
+            }
+            // After stage completes successfully, advance progress to end of this stage
+            if (stageRet == ERROR_SUCCESS)
+            {
+                int nextProgress = static_cast<int>(((i + 1) * 100) / total);
+                if (notifier) notifier->PostTaskProgress(portIndex, nextProgress, 0, stages[i].second);
             }
             if ((ret = stageRet) != ERROR_SUCCESS)
             {
@@ -161,8 +159,14 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
 
     SparkLog_EnqueuePdtLog(lg);
 
-    // Notify UI via adapter
-    if (notifier) notifier->PostTaskProgress(portIndex, 100, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed"));
+    // Notify UI via adapter. On failure prefer showing last stage name instead of generic "Failed".
+    if (notifier)
+    {
+        CString finalStatus;
+        if (ret == ERROR_SUCCESS) finalStatus = _T("Success");
+        else finalStatus = (!lastStageName.IsEmpty()) ? (lastStageName + _T(" Failed")) : _T("Failed");
+        notifier->PostTaskProgress(portIndex, 100, ret, finalStatus);
+    }
 
     return ret;
 }
@@ -194,6 +198,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     CStringA timeA(now.Format(_T("%H:%M:%S")));
     strncpy_s(lg.start_date, _countof(lg.start_date), dateA.GetString(), _TRUNCATE);
     strncpy_s(lg.start_time, _countof(lg.start_time), timeA.GetString(), _TRUNCATE);
+    CString lastStageName = _T("");
     int selectRet = sm3350.DeviceSelect(u08PhyIdx);
     if (selectRet == ERROR_SUCCESS)
     {
@@ -234,6 +239,8 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
         for (size_t i = 0; i < total; ++i)
         {
             progress = static_cast<int>((i * 100) / total);
+            // remember last stage name so we can report it on failure
+            lastStageName = stages[i].second;
             if (notifierQc) notifierQc->PostTaskProgress(portIndex, progress, 0, stages[i].second);
             int stageRet = ERROR_SUCCESS;
             switch (stages[i].first)
@@ -277,8 +284,17 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
 
     SparkLog_EnqueuePdtLog(lg);
 
-    // Notify UI via adapter
-    if (notifierQc) notifierQc->PostTaskProgress(portIndex, progress, ret, (ret == ERROR_SUCCESS) ? _T("Success") : _T("Failed"));
+    // Notify UI via adapter. Do not force progress to 100% on failure ¡ª
+    // only report 100 when the overall result is success. On failure keep
+    // the last reported progress so UI reflects where it failed.
+    if (notifierQc)
+    {
+        int finalProgress = (ret == ERROR_SUCCESS) ? 100 : progress;
+        CString finalStatus;
+        if (ret == ERROR_SUCCESS) finalStatus = _T("Success");
+        else finalStatus = (!lastStageName.IsEmpty()) ? (lastStageName + _T(" Failed")) : _T("Failed");
+        notifierQc->PostTaskProgress(portIndex, finalProgress, ret, finalStatus);
+    }
 
     return ret;
 }
