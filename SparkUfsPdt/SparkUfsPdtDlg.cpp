@@ -597,15 +597,7 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                     }
                     UpdateStatusBarText();
 
-                    if (m_activeTaskCount > 0)
-                    {
-                        --m_activeTaskCount;
-                        if (m_activeTaskCount == 0 && m_scanButtonDisabledByRun)
-                        {
-                            SetScanButtonEnabled(true);
-                            m_scanButtonDisabledByRun = false;
-                        }
-                    }
+                    DecrementActiveTasks(1);
 
                     int g = m_portGroupIdx[port];
                     int pos = m_portGroupPos[port];
@@ -760,16 +752,7 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
 
     // The TaskProgressMsg pointer was allocated by the worker (DialogAdapter).
     // Free it here to avoid leaking memory for legacy callers.
-    // Safety: ensure active task count never negative and re-enable Scan if all tasks finished
-    if (m_activeTaskCount <= 0)
-    {
-        m_activeTaskCount = 0;
-        if (m_scanButtonDisabledByRun)
-        {
-            SetScanButtonEnabled(true);
-            m_scanButtonDisabledByRun = false;
-        }
-    }
+    // Decrement done via DecrementActiveTasks where appropriate
     delete msg;
     return 0;
 }
@@ -868,12 +851,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
 
     if (startedAnyTask)
     {
-        m_activeTaskCount += enqueuedCount;
-        if (!m_scanButtonDisabledByRun)
-        {
-            SetScanButtonEnabled(false);
-            m_scanButtonDisabledByRun = true;
-        }
+        IncrementActiveTasks(enqueuedCount);
     }
 }
 
@@ -1112,6 +1090,36 @@ void CSparkUfsPdtDlg::SetScanButtonEnabled(bool enabled)
     }
 }
 
+void CSparkUfsPdtDlg::IncrementActiveTasks(int n)
+{
+    if (n <= 0) return;
+    int prev = m_activeTaskCount.fetch_add(n);
+    if (prev <= 0)
+    {
+        // first tasks started: disable scan button
+        if (!m_scanButtonDisabledByRun)
+        {
+            SetScanButtonEnabled(false);
+            m_scanButtonDisabledByRun = true;
+        }
+    }
+}
+
+void CSparkUfsPdtDlg::DecrementActiveTasks(int n)
+{
+    if (n <= 0) return;
+    int curr = m_activeTaskCount.fetch_sub(n) - n;
+    if (curr <= 0)
+    {
+        m_activeTaskCount.store(0);
+        if (m_scanButtonDisabledByRun)
+        {
+            SetScanButtonEnabled(true);
+            m_scanButtonDisabledByRun = false;
+        }
+    }
+}
+
 LRESULT CSparkUfsPdtDlg::OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam)
 {
     try
@@ -1187,12 +1195,7 @@ LRESULT CSparkUfsPdtDlg::OnFactoryCmdStartTest(WPARAM wParam, LPARAM lParam)
         {
             m_totalCount += enqueuedCount;
             m_groupPending[group] = enqueuedCount;
-            m_activeTaskCount += enqueuedCount;
-            if (!m_scanButtonDisabledByRun)
-            {
-                SetScanButtonEnabled(false);
-                m_scanButtonDisabledByRun = true;
-            }
+            IncrementActiveTasks(enqueuedCount);
             UpdateStatusBarText();
         }
         else

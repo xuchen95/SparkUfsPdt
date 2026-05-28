@@ -135,8 +135,10 @@ private:
     CBrush m_factoryComLinkedBrushGreen;
     CBrush m_factoryComLinkedBrushRed;
     bool m_factoryComConnected = false;
-    bool m_scanButtonDisabledByRun = false;
-    int  m_activeTaskCount = 0;
+    bool m_scanButtonDisabledByRun = false; // now private; use IsScanButtonDisabled() to read
+    std::atomic<int> m_activeTaskCount{0};
+    void IncrementActiveTasks(int n = 1);
+    void DecrementActiveTasks(int n = 1);
     CString m_settingPath;
     CFont m_pdtNameFont;
     CStatusBarCtrl m_statusBar;
@@ -159,4 +161,6 @@ public:
     // Accessors used by list subclass drawing
     int GetPortProgress(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portProgress[idx] : 0; }
     bool IsPortFailed(int idx) const { return (idx >= 0 && idx < UI_THREAD_COUNT) ? m_portFailed[idx] : false; }
+    // Read-only accessor for scan button disabled state. Use Increment/DecrementActiveTasks to change.
+    bool IsScanButtonDisabled() const { return m_scanButtonDisabledByRun; }
 };
