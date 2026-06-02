@@ -13,6 +13,45 @@ EventBus& EventBus::Instance()
 	return s;
 }
 
+void EventBus::PublishUI(HWND target, const UIEvent& uiEvt)
+{
+	if (!target) return;
+	std::shared_ptr<EventBus::QueueEntry> entryPtr;
+	{
+		std::lock_guard<std::mutex> lk(mutex_);
+		auto it = map_.find(target);
+		if (it == map_.end())
+		{
+			entryPtr = std::make_shared<QueueEntry>();
+			map_.emplace(target, entryPtr);
+		}
+		else
+		{
+			entryPtr = it->second;
+		}
+	}
+
+	int p = uiEvt.portIndex;
+	if (p < 0 || p >= (int)entryPtr->slots.size())
+	{
+		// default to slot 0 for global commands
+		p = 0;
+	}
+
+	// Protect slot update with per-entry lock to avoid races with ConsumeAllUI
+	{
+		std::lock_guard<std::mutex> lk(entryPtr->lock);
+		auto &slot = entryPtr->slots[p];
+		slot.uiEvt = uiEvt;
+		slot.uiDirty.store(true, std::memory_order_release);
+	}
+
+	// Notify UI thread immediately for UI events
+	entryPtr->pending.store(true);
+	entryPtr->lastNotifyMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(), std::memory_order_relaxed);
+	::PostMessage(target, MSG_WM_TASK_PROGRESS, 0, 0);
+}
+
 EventBus::EventBus()
 {
 	stopNotifier_.store(false);
@@ -102,24 +141,38 @@ void EventBus::Publish(HWND target, const ProgressEvent& evt)
 		}
 	}
 
-	int p = evt.portIndex;
+	// Backward compatibility: if caller didn't set type, infer from progress value
+	auto evtCopy = evt;
+	if (evtCopy.type != spark::ufspdt::ProgressEvent::EventType::Progress && evtCopy.type != spark::ufspdt::ProgressEvent::EventType::StatusOnly && evtCopy.type != spark::ufspdt::ProgressEvent::EventType::Final)
+	{
+		// infer
+		if (evtCopy.progress >= 0) evtCopy.type = spark::ufspdt::ProgressEvent::EventType::Progress;
+		else evtCopy.type = spark::ufspdt::ProgressEvent::EventType::StatusOnly;
+	}
+	int p = evtCopy.portIndex;
 	if (p < 0 || p >= (int)entryPtr->slots.size()) return;
 
 	// Protect slot update with per-entry lock to avoid races with ConsumeAll
 	{
 		std::lock_guard<std::mutex> lk(entryPtr->lock);
 		auto &slot = entryPtr->slots[p];
-		// If this is a status-only update (progress < 0), preserve any
-		// previously stored numeric progress and only update status/result.
-		if (evt.progress >= 0)
+		// If caller provided explicit type use it; otherwise keep compatibility
+		// with old callers that used negative progress as status-only.
+		auto type = evtCopy.type;
+		if (type == ProgressEvent::EventType::Progress)
 		{
 			slot.evt = evt;
 		}
-		else
+		else if (type == ProgressEvent::EventType::StatusOnly)
 		{
 			slot.evt.status = evt.status;
 			slot.evt.result = evt.result;
 			// leave slot.evt.progress untouched
+		}
+		else
+		{
+			// Final or unknown types: fully replace
+			slot.evt = evt;
 		}
 		slot.dirty.store(true, std::memory_order_release);
 	}
@@ -196,9 +249,39 @@ std::vector<ProgressEvent> EventBus::ConsumeAll(HWND target)
 	return out;
 }
 
+std::vector<UIEvent> EventBus::ConsumeAllUI(HWND target)
+{
+	std::vector<UIEvent> out;
+	if (!target) return out;
+	std::shared_ptr<EventBus::QueueEntry> entryPtr;
+	{
+		std::lock_guard<std::mutex> lk(mutex_);
+		auto it = map_.find(target);
+		if (it == map_.end()) return out;
+		entryPtr = it->second;
+	}
+
+	// Lock the entry while reading and clearing uiDirty flags
+	{
+		std::lock_guard<std::mutex> lk(entryPtr->lock);
+		for (int i = 0; i < (int)entryPtr->slots.size(); ++i)
+		{
+			if (entryPtr->slots[i].uiDirty.load(std::memory_order_acquire))
+			{
+				out.push_back(entryPtr->slots[i].uiEvt);
+				entryPtr->slots[i].uiDirty.store(false, std::memory_order_release);
+			}
+		}
+		// reset pending flag
+		entryPtr->pending.store(false);
+	}
+	return out;
+}
+
 void EventBus::Unregister(HWND target)
 {
 	if (!target) return;
 	std::lock_guard<std::mutex> lk(mutex_);
 	map_.erase(target);
 }
+

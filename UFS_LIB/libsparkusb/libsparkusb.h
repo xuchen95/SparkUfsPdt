@@ -25,15 +25,14 @@
 //#define MAX_TESTER_LUN          (2)
 //#define MAX_TESTER_PER_LUN      (8)
 
-#define MAX_DEVICE_CNT          (16)
-#define MAX_TINY_CODE_SIZE      (32768)
-#define MAX_BOOT_INFO_SIZE      (3072)
+static constexpr int MAX_DEVICE_CNT = 16;
+static constexpr std::size_t MAX_TINY_CODE_SIZE = 32768;
+static constexpr std::size_t MAX_BOOT_INFO_SIZE = 3072;
 
-#define UFS_ISP_SIZE     (1024 *512 *2)
+static constexpr std::size_t UFS_ISP_SIZE = 1024ULL * 512ULL * 2ULL;
 
-
-#define UFS_ERASE_ALL_BLOCK    (0)
-#define UFS_ERASE_GOOD_BLOCK    (1)
+static constexpr int UFS_ERASE_ALL_BLOCK = 0;
+static constexpr int UFS_ERASE_GOOD_BLOCK = 1;
 
 typedef union
 {

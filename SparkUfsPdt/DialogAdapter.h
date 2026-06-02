@@ -53,14 +53,106 @@ public:
 		if (!dlg_) return;
 		// Publish event to EventBus for the dialog to consume on UI thread.
 		spark::ufspdt::ProgressEvent evt;
+		evt.type = spark::ufspdt::ProgressEvent::EventType::Progress;
 		evt.portIndex = portIndex;
 		evt.progress = progress;
 		evt.result = result;
+		// If this is a failure, ensure status is formatted consistently
+		CString sendStatus = status;
+		if (result != 0)
+		{
+			sendStatus = FormatFailureStatus(status, result);
+		}
 		// convert CString (TCHAR) to UTF-8 std::string
-		CT2A conv(status, CP_UTF8);
+		CT2A conv(sendStatus, CP_UTF8);
 		evt.status = std::string(conv);
 		// Use the dialog window handle as the target
 		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
+
+		// If this progress represents completion (100%) post UI commands for counts and UI update
+		if (progress >= 100)
+		{
+			// Decrement active tasks by 1
+			PostUiCommand(spark::ufspdt::UICommand::DecrementActiveTasks, portIndex, 1, CString());
+			// Increment pass count by 1 (encoded in high 16 bits)
+			PostUiCommand(spark::ufspdt::UICommand::IncrementPassCount, portIndex, 1, CString());
+			// Update status bar text
+			PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
+		}
+	}
+
+	// Post a UI-level command (intent) to be executed on the dialog's UI thread
+	void PostUiCommand(spark::ufspdt::UICommand cmd, int portIndex = -1, int value = 0, const CString& text = CString())
+	{
+		if (!dlg_) return;
+		spark::ufspdt::UIEvent u;
+		u.cmd = cmd;
+		u.portIndex = portIndex;
+		u.value = value;
+		CT2A conv(text, CP_UTF8);
+		u.text = std::string(conv);
+		spark::ufspdt::EventBus::Instance().PublishUI(dlg_->GetSafeHwnd(), u);
+	}
+
+	void PostTaskStatus(int portIndex, int result, const CString& status) override
+	{
+		if (!dlg_) return;
+		spark::ufspdt::ProgressEvent evt;
+		evt.type = spark::ufspdt::ProgressEvent::EventType::StatusOnly;
+		evt.portIndex = portIndex;
+		evt.progress = -1;
+		evt.result = result;
+		// Always format failures consistently
+		CString sendStatus = status;
+		if (result != 0)
+		{
+			sendStatus = FormatFailureStatus(status, result);
+		}
+		CT2A conv(sendStatus, CP_UTF8);
+		evt.status = std::string(conv);
+		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
+
+		// Post UI commands for failure: decrement active tasks and increment fail count
+		PostUiCommand(spark::ufspdt::UICommand::DecrementActiveTasks, portIndex, 1, CString());
+		PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
+		PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
+	}
+
+	// Format a status string consistently for failures: "<Stage> Failed (0xXXXX)"
+	static CString FormatFailureStatus(const CString& stage, int errCode)
+	{
+		CString base = stage;
+		base.Trim();
+		// Remove trailing "Failed" (case-insensitive) if already present
+		CString up = base;
+		up.MakeUpper();
+		if (up.GetLength() >= 6 && up.Right(6) == _T("FAILED"))
+		{
+			base = base.Left(base.GetLength() - 6);
+			base.TrimRight();
+		}
+
+		// If the stage contains no spaces, try to split CamelCase into words
+		if (base.Find(_T(' ')) == -1)
+		{
+			CString tmp = base;
+			CString spaced;
+			for (int i = 0; i < tmp.GetLength(); ++i)
+			{
+				TCHAR ch = tmp[i];
+				if (i > 0 && _istupper(ch) && !_istupper(tmp[i-1]) && !_istspace(tmp[i-1]))
+				{
+					spaced.AppendChar(' ');
+				}
+				spaced.AppendChar(ch);
+			}
+			spaced.Trim();
+			if (!spaced.IsEmpty()) base = spaced;
+		}
+		CString s;
+		// Use lowercase '0x' and uppercase hex letters for consistency
+		s.Format(_T("%s Failed (0x%X)"), base.GetString(), errCode);
+		return s;
 	}
 
 private:

@@ -12,6 +12,7 @@ extern char g_UfsIsp[UFS_ISP_SIZE];
 #include "CImpState.h"
 #include "EventMessages.h"
 #include <array>
+#include <bitset>
 
 // CSparkUfsPdtDlg dialog
 class CSparkUfsPdtDlg : public CDialogBase
@@ -87,6 +88,8 @@ public:
         int progress; // 0-100
         int result; // final result code or 0 for ongoing
         CString statusText;
+        // Optional: indicates legacy message is status-only when true
+        bool statusOnly = false;
     };
 
     // Append a line to the PDT run log (implemented in Run file)
@@ -114,9 +117,15 @@ public:
     // modifying other per-port state or UI properties.
     void UpdatePortStatus(int portIndex, const CString& status);
 
+
     // Timer id used to coalesce frequent scroll events and refresh overlays
     static constexpr UINT_PTR SCROLL_REFRESH_TIMER_ID = 0x1001;
     UINT_PTR m_scrollRefreshTimer = 0;
+    // Timer id used to coalesce high-frequency progress updates
+    static constexpr UINT_PTR PROGRESS_THROTTLE_TIMER_ID = 0x2002;
+    UINT_PTR m_progressThrottleTimer = 0;
+    // Pending coarse-grained state updates queued by OnTaskProgress; flushed by timer
+    // (defined after PortState so type is known)
 
 private:
     bool LoadSettingFromPath(const CString& path, bool showError);
@@ -157,11 +166,32 @@ private:
         bool failed = false;
         int progress = 0;
         CStringW serial = CStringW(L"", 128);
+        // Formatted status text to display in Status column (TCHAR CString)
+        CString statusText;
+        CString drive;
+        CString startTime;
+        CString version3350;
+        CString mid;
+        CString oid;
+        CString fwVersion;
         int groupIdx = -1;
         int groupPos = -1;
     };
 
     std::array<PortState, UI_THREAD_COUNT> m_ports;
+
+    // Centralized UI update entry for per-port state. Compare newState with
+    // the current cached state and only modify list control cells that changed.
+    void UpdatePortUI(int portIndex, const PortState& newState);
+
+    // Pending coarse-grained state updates queued by OnTaskProgress; flushed by timer
+    std::array<PortState, UI_THREAD_COUNT> m_pendingStates;
+    std::bitset<UI_THREAD_COUNT> m_pendingStateMask;
+
+    // Enqueue a partial PortState into pending states (merge) and schedule UI flush
+    void EnqueuePendingPortState(int portIndex, const PortState& delta);
+    // Start the throttle timer if not running
+    void StartProgressThrottleTimer();
 
     CSerialPort m_factorySerial;
     int m_groupPending[2] = { 0, 0 };

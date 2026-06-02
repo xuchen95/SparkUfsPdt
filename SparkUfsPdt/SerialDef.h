@@ -1,13 +1,16 @@
 #pragma once
 #include "pch.h"
 
-#define WM_FACTORY_CMD_BASE            (WM_USER + 0x1000)
-#define FACOTRY_CMD_DOWNLOAD           (WM_FACTORY_CMD_BASE + 0)
-#define FACOTRY_CMD_START_TEST         (WM_FACTORY_CMD_BASE + 1)
-#define FACOTRY_CMD_TEST_DONE          (WM_FACTORY_CMD_BASE + 2)
-#define FACOTRY_CMD_TIME_OUT           (WM_FACTORY_CMD_BASE + 3)
-#define FACOTRY_CMD_UNKNOW_CMD         (WM_FACTORY_CMD_BASE + 4)
-#define FACOTRY_CMD_IDX(c)             ((c) - WM_FACTORY_CMD_BASE)
+// Message base for factory commands
+static constexpr UINT WM_FACTORY_CMD_BASE = (WM_USER + 0x1000);
+static constexpr UINT FACOTRY_CMD_DOWNLOAD = (WM_FACTORY_CMD_BASE + 0);
+static constexpr UINT FACOTRY_CMD_START_TEST = (WM_FACTORY_CMD_BASE + 1);
+static constexpr UINT FACOTRY_CMD_TEST_DONE = (WM_FACTORY_CMD_BASE + 2);
+static constexpr UINT FACOTRY_CMD_TIME_OUT = (WM_FACTORY_CMD_BASE + 3);
+static constexpr UINT FACOTRY_CMD_UNKNOW_CMD = (WM_FACTORY_CMD_BASE + 4);
+
+// Helper to compute index from message id
+static constexpr int FACOTRY_CMD_IDX(UINT c) { return static_cast<int>(c - WM_FACTORY_CMD_BASE); }
 
 enum FactoryCmdType
 {
@@ -16,7 +19,6 @@ enum FactoryCmdType
 	TIME_OUT,
 	FACTORY_CMD_MAX
 };
-
 
 
 static const char* FACTORY_CMD_STR[] =
@@ -41,10 +43,11 @@ typedef struct SerialPortRecvHead
 	int nUM_RECVDATA;
 }SERIALPORTRECVHEAD, * PSERIALPORTRECVHEAD;
 
-#define UM_RECVDATA                 (WM_USER+0x801)
+static constexpr UINT UM_RECVDATA = (WM_USER + 0x801);
 
-#define MACHINE_DEVICE_CNT  (8)
-#define FACTORY_PATH_MAX    (1024)
+static constexpr int MACHINE_DEVICE_CNT = 8;
+static constexpr size_t FACTORY_PATH_MAX = 1024;
+
 typedef struct FactoryCmd
 {
 	BYTE group = 0xFF;

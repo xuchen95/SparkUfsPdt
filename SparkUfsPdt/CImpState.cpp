@@ -66,19 +66,42 @@ namespace
     // "CImpState::PowerOffStage" -> "PowerOff" (remove class prefix and trailing "Stage").
     static CString StageNameFromFunction(const TCHAR* func)
     {
-        CString s(func);
-        // strip class qualifier if present (find last "::")
-        int idx = s.ReverseFind(':');
-        if (idx > 0 && idx - 1 >= 0 && s[idx - 1] == ':')
+    CString s(func);
+    // strip class qualifier if present (find last "::")
+    int idx = s.ReverseFind(':');
+    if (idx > 0 && idx - 1 >= 0 && s[idx - 1] == ':')
+    {
+        s = s.Mid(idx + 1);
+    }
+    // remove trailing "Stage" if present
+    if (s.GetLength() > 5 && s.Right(5).CompareNoCase(_T("Stage")) == 0)
+    {
+        s = s.Left(s.GetLength() - 5);
+    }
+
+    // Split CamelCase / PascalCase into words: e.g., PowerOff -> Power Off
+    CString out;
+    bool newWord = true;
+    for (int i = 0; i < s.GetLength(); ++i)
+    {
+        TCHAR ch = s[i];
+        if (i > 0 && _istupper(ch) && !_istspace(s[i-1]) && !_istupper(s[i-1]))
         {
-            s = s.Mid(idx + 1);
+            out.AppendChar(' ');
+            newWord = true;
         }
-        // remove trailing "Stage" if present
-        if (s.GetLength() > 5 && s.Right(5).CompareNoCase(_T("Stage")) == 0)
+        if (newWord)
         {
-            s = s.Left(s.GetLength() - 5);
+            out.AppendChar(_totupper(ch));
+            newWord = false;
         }
-        return s;
+        else
+        {
+            out.AppendChar(_totlower(ch));
+        }
+    }
+    out.Trim();
+    return out.IsEmpty() ? s : out;
     }
 }
 
@@ -135,12 +158,6 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    if (notifier_)
-    {
-        // Use progress -1 to indicate 'status-only' update that should not overwrite
-        // the current numeric progress value maintained by the orchestrator.
-        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
-    }
     do
     {
         if ((ret = sm3350.UfsPowerOff()) != ERROR_SUCCESS) break;
@@ -152,8 +169,9 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            // Status should remain the stage name; result conveys failure
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            // Use centralized formatter for failure messages
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -169,10 +187,6 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    if (notifier_)
-    {
-        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
-    }
     //char pData[512 * 8] = { 0 };
     //DEBUG data
     //SetMdtData(pDlg, pData);
@@ -189,7 +203,8 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -205,10 +220,6 @@ int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    if (notifier_)
-    {
-        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
-    }
 
     ret = sm3350.UfsCardInit();
     if (ret != ERROR_SUCCESS)
@@ -216,7 +227,8 @@ int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -233,10 +245,6 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
     if (settings_ && settings_->GetBaseSetting())
     {
         bForceRomMode = settings_->GetBaseSetting()->ForceRomMode ? FALSE : FALSE; // preserve behavior for now
-    }
-    if (notifier_)
-    {
-        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
     do
     {
@@ -277,9 +285,9 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
     {
         if (notifier_)
         {
-            CString status;
-            status.Format(_T("%s Failed"), _T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, 0, ret, status);
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskProgress(portIndex, 0, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -297,7 +305,7 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     if (notifier_)
     {
-        notifier_->PostTaskProgress(portIndex, 0, 0, StageNameFromFunction(_T(__FUNCTION__)));
+        notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
     ret = sm3350.VccOffForceRom();
@@ -306,8 +314,9 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString status;
-            status.Format(_T("%s Failed"), _T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, 0, ret, status);
+            status.Format(_T("%s"), StageNameFromFunction(_T(__FUNCTION__)));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(status, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -325,7 +334,7 @@ int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     if (notifier_)
     {
-        notifier_->PostTaskProgress(portIndex, 0, 0, StageNameFromFunction(_T(__FUNCTION__)));
+        notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
     ret = sm3350.UfsMpStartMode();
@@ -334,7 +343,8 @@ int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -351,12 +361,6 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    if (notifier_)
-    {
-        CString stage; stage.Format(_T("%s"), _T(__FUNCTION__));
-        if (stage.Right(5).CompareNoCase(_T("Stage")) == 0) stage = stage.Left(stage.GetLength() - 5);
-        notifier_->PostTaskProgress(portIndex, -1, 0, stage);
-    }
 
     ret = sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption);
     if (ret != ERROR_SUCCESS)
@@ -364,7 +368,8 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -380,12 +385,7 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
 
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-    if (notifier_)
-    {
-        CString stage; stage.Format(_T("%s"), _T(__FUNCTION__));
-        if (stage.Right(5).CompareNoCase(_T("Stage")) == 0) stage = stage.Left(stage.GetLength() - 5);
-        notifier_->PostTaskProgress(portIndex, -1, 0, stage);
-    }
+    // Stage entry: progress/status will be reported by caller pipeline
 
     ret = sm3350.UfsMpExit();
     if (ret != ERROR_SUCCESS)
@@ -393,7 +393,7 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            notifier_->PostTaskStatus(portIndex, ret, stage);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -517,7 +517,8 @@ int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -545,7 +546,8 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskProgress(portIndex, -1, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
@@ -631,7 +633,12 @@ int CImpState::VerifySram1Stage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySram Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
@@ -659,7 +666,12 @@ int CImpState::VerifySram2Stage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySram Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
@@ -778,11 +790,12 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char pData[512 * 0x03] = { 0 };
     CStringW strSn;
-#define MNM_DATA_OFFSET 0x02
-#define CAP_DATA_OFFSET (16 * 16 + 13)
-#define MID_DATA_OFFSET (16 * 20 + 4)
-#define PNM_DATA_OFFSET (16 * 44 + 6)
-#define PSN_DATA_OFFSET (16 * 76 + 2)
+    // Offsets within CID data block
+    constexpr size_t MNM_DATA_OFFSET = 0x02;
+    constexpr size_t CAP_DATA_OFFSET = (16 * 16 + 13);
+    constexpr size_t MID_DATA_OFFSET = (16 * 20 + 4);
+    constexpr size_t PNM_DATA_OFFSET = (16 * 44 + 6);
+    constexpr size_t PSN_DATA_OFFSET = (16 * 76 + 2);
 
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
@@ -908,7 +921,12 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
     }
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyCid Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
@@ -950,7 +968,12 @@ int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifyGeometry Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifyGeometry Failed", _TRUNCATE);
@@ -1000,7 +1023,12 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
 
     if (ret != ERROR_SUCCESS)
     {
-        if (notifier_) notifier_->PostTaskProgress(portIndex, 0, ret, _T("VerifySn Failed"));
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
         lg.error_code = ret;
         ZeroMemory(lg.state, sizeof(lg.state));
         strncpy_s(lg.state, _countof(lg.state), "VerifySn Failed", _TRUNCATE);

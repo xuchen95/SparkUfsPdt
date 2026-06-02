@@ -1,5 +1,4 @@
 #pragma once
-#pragma once
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -11,15 +10,20 @@
 #include <memory>
 #include <thread>
 #include <condition_variable>
+#include "EventMessages.h"
 
 namespace spark { namespace ufspdt {
 
 struct ProgressEvent {
 	int portIndex;
+	enum class EventType : int { Progress = 0, StatusOnly = 1, Final = 2 };
+	EventType type = EventType::Progress;
 	int progress;
 	int result;
 	std::string status; // UTF-8
 };
+
+struct UIEvent;
 
 class EventBus
 {
@@ -28,9 +32,12 @@ public:
 
 	// publish an event destined to target HWND; will PostMessage to wake UI thread
 	void Publish(HWND target, const ProgressEvent& evt);
+	void PublishUI(HWND target, const UIEvent& uiEvt);
 
 	// consume all pending events for target (called on UI thread)
 	std::vector<ProgressEvent> ConsumeAll(HWND target);
+	// consume UI events queued for target
+	std::vector<UIEvent> ConsumeAllUI(HWND target);
 
 	// Unregister a target window (cleanup internal state). Call from UI on destroy.
 	void Unregister(HWND target);
@@ -43,7 +50,9 @@ private:
 
 	struct SlotEntry {
 		ProgressEvent evt;
+		UIEvent uiEvt;
 		std::atomic_bool dirty{false};
+		std::atomic_bool uiDirty{false};
 	};
 
 	struct QueueEntry {
