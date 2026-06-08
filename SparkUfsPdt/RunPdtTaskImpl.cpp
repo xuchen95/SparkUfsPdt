@@ -150,7 +150,7 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
     {
         ret = selectRet;
         lg.error_code = (UINT32)ret;
-        strncpy_s(lg.state, _countof(lg.state), "DeviceSelect Failed", _TRUNCATE);
+        strncpy_s(lg.stage, _countof(lg.stage), "DeviceSelect Failed", _TRUNCATE);
     }
 
     DWORD tEnd = GetTickCount();
@@ -158,9 +158,9 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
 
     lg.build_time = (int)(durMs / 1000);
     lg.error_code = (UINT32)ret;
-    if (lg.state[0] == '\0')
+    if (lg.stage[0] == '\0')
     {
-        strncpy_s(lg.state, _countof(lg.state), (ret == ERROR_SUCCESS) ? "Success" : "Failed", _TRUNCATE);
+        strncpy_s(lg.stage, _countof(lg.stage), (ret == ERROR_SUCCESS) ? "Success" : "Failed", _TRUNCATE);
     }
 
     SparkLog_EnqueuePdtLog(lg);
@@ -246,7 +246,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     {
         ret = selectRet;
         lg.error_code = (UINT32)ret;
-        strncpy_s(lg.state, _countof(lg.state), "DeviceSelect Failed", _TRUNCATE);
+        strncpy_s(lg.stage, _countof(lg.stage), "DeviceSelect Failed", _TRUNCATE);
     }
 
     DWORD tEnd = GetTickCount();
@@ -254,9 +254,9 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
 
     lg.build_time = (int)(durMs / 1000);
     lg.error_code = (UINT32)ret;
-    if (lg.state[0] == '\0')
+    if (lg.stage[0] == '\0')
     {
-        strncpy_s(lg.state, _countof(lg.state), (ret == ERROR_SUCCESS) ? "Success" : "Failed", _TRUNCATE);
+        strncpy_s(lg.stage, _countof(lg.stage), (ret == ERROR_SUCCESS) ? "Success" : "Failed", _TRUNCATE);
     }
 
     SparkLog_EnqueuePdtLog(lg);

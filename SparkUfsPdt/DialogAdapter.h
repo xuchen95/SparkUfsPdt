@@ -70,15 +70,8 @@ public:
 		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
 
 		// If this progress represents completion (100%) post UI commands for counts and UI update
-		if (progress >= 100)
-		{
-			// Decrement active tasks by 1
-			PostUiCommand(spark::ufspdt::UICommand::DecrementActiveTasks, portIndex, 1, CString());
-			// Increment pass count by 1 (encoded in high 16 bits)
-			PostUiCommand(spark::ufspdt::UICommand::IncrementPassCount, portIndex, 1, CString());
-			// Update status bar text
-			PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
-		}
+	// Note: Do not alter active task counts here. Task lifecycle accounting is handled
+	// centrally at task entry/exit to avoid duplicate or missing increments/decrements.
 	}
 
 	// Post a UI-level command (intent) to be executed on the dialog's UI thread
@@ -91,6 +84,7 @@ public:
 		u.value = value;
 		CT2A conv(text, CP_UTF8);
 		u.text = std::string(conv);
+		// Use EventBus PublishUI so worker threads can also post via HWND.
 		spark::ufspdt::EventBus::Instance().PublishUI(dlg_->GetSafeHwnd(), u);
 	}
 
@@ -113,9 +107,10 @@ public:
 		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
 
 		// Post UI commands for failure: decrement active tasks and increment fail count
-		PostUiCommand(spark::ufspdt::UICommand::DecrementActiveTasks, portIndex, 1, CString());
-		PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
-		PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
+	// Only post counts/status; do not touch active task counter here. The worker
+	// invocation is responsible for decrementing the active task count when it exits.
+	PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
+	PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
 	}
 
 	// Format a status string consistently for failures: "<Stage> Failed (0xXXXX)"

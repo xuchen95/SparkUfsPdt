@@ -35,6 +35,8 @@ namespace
     // Owner-draw rendering used for progress column.
 }
 
+
+
 void CSparkUfsPdtDlg::StartProgressThrottleTimer()
 {
     if (!m_progressThrottleTimer)
@@ -762,6 +764,12 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                     if (result != 0 && result != ERROR_SUCCESS)
                     {
                         m_ports[port].failed = true; // ensure failed flag set for final failure
+                        // re-enqueue once so current flush applies failed=true color immediately
+                        PortState failDelta;
+                        failDelta.progress = m_ports[port].progress;
+                        failDelta.failed = true;
+                        if (!status.IsEmpty()) failDelta.statusText = status;
+                        EnqueuePendingPortState(port, failDelta);
                     }
 
                     int g = m_ports[port].groupIdx;
@@ -880,8 +888,17 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
     if (pList)
     {
+        // Reset per-port visuals for all rows when starting a new run so previous
+        // PASS/FAIL coloring and progress do not persist. Keep aggregate counters.
         for (int i = 0; i < UI_THREAD_COUNT; ++i)
         {
+            m_ports[i].failed = false;
+            m_ports[i].progress = 0;
+            PortState clearDelta;
+            clearDelta.failed = false;
+            clearDelta.progress = 0;
+            clearDelta.statusText = _T("");
+            EnqueuePendingPortState(i, clearDelta);
             CString status = pList->GetItemText(i, 2);
             if (IsPortRunnableStatus(status))
             {
@@ -941,20 +958,72 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
                         CString err;
                         err.Format(_T("Read/advance SerialNumber failed for port %d"), i + 1);
                         AppendLogLine(err);
-						return; // abort starting tasks if we cannot get a valid SN for FT3 config
+                        // abort starting tasks if we cannot get a valid SN for FT3 config
+                        return;
+                    }
+                }
+
+                // Clear previous failure visuals for this port before enqueueing a rerun.
+                if (i >= 0 && i < UI_THREAD_COUNT)
+                {
+                    m_ports[i].failed = false;
+                    m_ports[i].progress = 0;
+                    if (pList)
+                    {
+                        pList->SetItemText(i, 1, _T(""));
+                        pList->SetItemText(i, 2, _T(""));
                     }
                 }
 
                 try {
                     // capture allocated SN from list control to pass into task
-                    //CString snAllocated = pList->GetItemText(i, 6);
-                    s_pool->enqueue([this, i, snAllocated]() { return this->RunPdtTask(i, snAllocated); });
+                    // We increment active tasks here after successful enqueue to
+                    // ensure exit decrement is always paired with a prior increment.
+                    // capture HWND on UI thread to safely publish UI events from worker
+                    HWND hwnd = this->GetSafeHwnd();
+                    s_pool->enqueue([this, i, snAllocated, hwnd]() {
+                        int r = ERROR_INVALID_FUNCTION;
+                        try {
+                            // Run task and catch exceptions to ensure we always reach cleanup
+                            r = this->RunPdtTask(i, snAllocated);
+                        }
+                        catch (...) {
+                            // Ensure we still report a failure result if an exception escapes
+                            r = ERROR_GEN_FAILURE;
+                        }
+
+                        // Ensure DecrementActiveTasks UI event is always posted even if
+                        // PublishUI throws unexpectedly. Wrap publish in try/catch and
+                        // log failures to the run log to aid diagnosis.
+                        try
+                        {
+                            spark::ufspdt::UIEvent u;
+                            u.cmd = spark::ufspdt::UICommand::DecrementActiveTasks;
+                            u.portIndex = i;
+                            u.value = 1;
+                            spark::ufspdt::EventBus::Instance().PublishUI(hwnd, u);
+                        }
+                        catch (const std::exception&)
+                        {
+                            // Log a simple message; avoid complex string conversions in worker thread
+                            CSparkUfsPdtDlg::AppendLogLine(_T("PublishUI exception posting DecrementActiveTasks"));
+                            // As a fallback, also post a simple WM message to the dialog to attempt decrement
+                            // (best-effort; avoid throwing from worker thread)
+                            try {
+                                ::PostMessage(hwnd, MSG_WM_TASK_PROGRESS, 0, 0);
+                            } catch (...) {}
+                        }
+
+                        return r;
+                    });
                     startedAnyTask = true;
                     enqueuedCount++;
+                    // Register this task in active count immediately after successful enqueue
+                    IncrementActiveTasks(1);
                 }
                 catch (const std::exception&)
                 {
-                    // enqueue failed for this port
+                    // enqueue failed for this port: log
                     CString err; err.Format(_T("Failed to start task for port %d"), i + 1);
                     AppendLogLine(err);
                 }
@@ -962,10 +1031,6 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
         }
     }
 
-    if (startedAnyTask)
-    {
-        IncrementActiveTasks(enqueuedCount);
-    }
 }
 
 void CSparkUfsPdtDlg::OnDestroy()
@@ -1110,6 +1175,15 @@ void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
     m_failCount = 0;
     m_activeTaskCount = 0;
     m_scanButtonDisabledByRun = false;
+
+    // Clear any pending throttled UI updates from previous run to avoid stale red state re-applying.
+    if (m_progressThrottleTimer)
+    {
+        KillTimer(m_progressThrottleTimer);
+        m_progressThrottleTimer = 0;
+    }
+    m_pendingStateMask.reset();
+
     for (int i = 0; i < UI_THREAD_COUNT; ++i)
     {
         m_ports[i].progress = 0;
@@ -1118,6 +1192,7 @@ void CSparkUfsPdtDlg::ResetTaskCounts(int totalCount)
         m_ports[i].serial = CStringW(L"", 128);
         m_ports[i].groupIdx = -1;
         m_ports[i].groupPos = -1;
+        m_pendingStates[i] = PortState();
     }
 
     CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));

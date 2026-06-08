@@ -174,8 +174,8 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "PowerOff Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "PowerOff Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -207,8 +207,8 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "Reboot Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "Reboot Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -231,8 +231,8 @@ int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "CardInit Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "CardInit Failed", _TRUNCATE);
     }
     Sleep(300);
     return ret;
@@ -290,8 +290,8 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskProgress(portIndex, 0, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "UpiuForceRom Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "UpiuForceRom Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -319,8 +319,8 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VccOffForceRom Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VccOffForceRom Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -347,8 +347,8 @@ int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "MpStart Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "MpStart Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -372,8 +372,8 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "Write1024KIspMp Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "Write1024KIspMp Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -396,8 +396,8 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, stage);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "MpExit Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "MpExit Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -521,8 +521,8 @@ int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "SetSn Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "SetSn Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -550,8 +550,8 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskProgress(portIndex, -1, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "SetMdt Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "SetMdt Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -583,8 +583,8 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskProgress(portIndex, -1, ret, stage);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifyISP Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyISP Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -608,8 +608,8 @@ int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskProgress(portIndex, -1, ret, stage);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "WriteSram Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "WriteSram Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -640,8 +640,8 @@ int CImpState::VerifySram1Stage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifySram Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -673,8 +673,8 @@ int CImpState::VerifySram2Stage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifySram Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifySram Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -928,8 +928,8 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifyCid Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyCid Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -975,8 +975,8 @@ int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifyGeometry Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyGeometry Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -1030,8 +1030,8 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
             notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
-        ZeroMemory(lg.state, sizeof(lg.state));
-        strncpy_s(lg.state, _countof(lg.state), "VerifySn Failed", _TRUNCATE);
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifySn Failed", _TRUNCATE);
     }
     return ret;
 }

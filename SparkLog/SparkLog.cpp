@@ -88,7 +88,7 @@ static void LogWorker()
                 (int)cfg.ufs_port,
                 cfg.func_name, cfg.card_id, cfg.fw_version, cfg.app_version, cfg.tester_version,
                 (unsigned char)cfg.mid[0], (unsigned char)cfg.oid[0], cfg.manufacturer, cfg.product_name,
-                cfg.serial_number, cfg.start_date, cfg.start_time, cfg.build_time, cfg.state, cfg.error_code);
+                cfg.serial_number, cfg.start_date, cfg.start_time, cfg.build_time, cfg.stage, cfg.error_code);
 
             // write to file as ANSI (no conversion)
             FILE* fp = NULL;

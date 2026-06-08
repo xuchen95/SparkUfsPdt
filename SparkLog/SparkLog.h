@@ -20,7 +20,7 @@ typedef struct SparkLog_Config
     char start_date[32];
     char start_time[32];
     int build_time;
-    char state[32];
+    char stage[32];
     UINT32 error_code;
 
 } pdt_log_config_t, *ppdt_log_config_t;
