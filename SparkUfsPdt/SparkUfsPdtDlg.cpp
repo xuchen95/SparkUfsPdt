@@ -16,6 +16,7 @@
 #include "DialogAdapter.h"
 #include "EventBus.h"
 #include "EventMessages.h"
+#include "IspMarkCache.h"
 #include <cerrno>
 
 
@@ -29,13 +30,6 @@ char g_UfsIsp[UFS_ISP_SIZE] = {};
 
 // define static pool pointer
 std::unique_ptr<ThreadPool> CSparkUfsPdtDlg::s_pool = nullptr;
-
-namespace
-{
-    // Owner-draw rendering used for progress column.
-}
-
-
 
 void CSparkUfsPdtDlg::StartProgressThrottleTimer()
 {
@@ -298,7 +292,7 @@ BOOL CSparkUfsPdtDlg::OnInitDialog()
     TCHAR lastPath[MAX_PATH * 4] = {};
     if (GetPrivateProfileString(_T("Base"), _T("LastSettingPath"), _T(""), lastPath, _countof(lastPath), baseIniPath) > 0)
     {
-        LoadSettingFromPath(lastPath, false);
+        LoadSettingFromPath(lastPath, true);
     }
 
     m_factorySerial.SetNotifyWnd(m_hWnd);
@@ -957,6 +951,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
                     {
                         CString err;
                         err.Format(_T("Read/advance SerialNumber failed for port %d"), i + 1);
+                        MessageBox(err);
                         AppendLogLine(err);
                         // abort starting tasks if we cannot get a valid SN for FT3 config
                         return;
@@ -1102,7 +1097,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
         // Define columns used by the UI
         pList->InsertColumn(0, _T("Port"), LVCFMT_LEFT, 60);
         pList->InsertColumn(1, _T("Progress"), LVCFMT_LEFT, 150);
-        pList->InsertColumn(2, _T("Status"), LVCFMT_LEFT, 80);
+        pList->InsertColumn(2, _T("Status"), LVCFMT_LEFT, 150);
         pList->InsertColumn(3, _T("Drive"), LVCFMT_LEFT, 60);
         pList->InsertColumn(4, _T("Start Time"), LVCFMT_LEFT, 120);
         pList->InsertColumn(5, _T("3350Version"), LVCFMT_LEFT, 100);
@@ -1433,7 +1428,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnPdtSetting()
     char currentDirectory[MAX_PATH] = {};
     GetCurrentDirectory(MAX_PATH, currentDirectory);
     CString initialDir;
-    initialDir.Format(_T("%hs"), currentDirectory);
+    initialDir.Format(_T("%hs\\Setting"), currentDirectory);
 
     CFileDialog dlg(TRUE, _T("ini"), _T("setting.ini"), OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
         _T("INI Files (*.ini)|*.ini|All Files (*.*)|*.*||"));
@@ -1544,6 +1539,13 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
                     MessageBox(_T("SRAM Info Read error (from configured path)."), _T("Spark UFS Card PDT"), MB_ICONERROR);
                 }
             }
+            else
+            {
+				if (showError)
+				{
+					MessageBox(_T("SRAM Info file not found at configured path."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+				}
+            }
         }
     }
     else
@@ -1553,7 +1555,7 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
             CString configuredPath = CString(pOption->mainPrm.strIspPath);
             if (!configuredPath.IsEmpty() && GetFileAttributes((LPCSTR)configuredPath.GetString()) != INVALID_FILE_ATTRIBUTES)
             {
-                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != 0)
+                if (spark::file::fnReadFile(configuredPath, (PCHAR)g_UfsIsp) != ERROR_SUCCESS)
                 {
                     if (showError)
                     {
@@ -1561,12 +1563,26 @@ bool CSparkUfsPdtDlg::LoadSettingFromPath(const CString& path, bool showError)
                     }
                     CImpState::UpdateIspMark(nullptr, 0);
                 }
-                else
+                int nIspSize = 0;
+                if (ERROR_SUCCESS == spark::file::fnFileSize(configuredPath, &nIspSize))
                 {
-                    int ispFileSize = 0;
-                    spark::file::fnFileSize(CStringA(configuredPath), &ispFileSize);
-                    CImpState::UpdateIspMark(g_UfsIsp, ispFileSize);
+                    if (nIspSize != UFS_ISP_SIZE)
+                    {
+                        if (showError)
+                        {
+                            MessageBox(_T("ISP Info file size mismatch."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+                        }
+                    }
+                    CImpState::UpdateIspMark(g_UfsIsp, nIspSize);
                 }
+                
+            }
+            else
+            {
+				if (showError)
+				{
+					MessageBox(_T("ISP Info file not found at configured path."), _T("Spark UFS Card PDT"), MB_ICONERROR);
+				}
             }
         }
     }

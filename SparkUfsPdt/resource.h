@@ -75,6 +75,8 @@
 #define IDC_CB_COM_SEL                  1061
 #define IDC_S_PIC_COM_LINKED            1062
 #define IDC_CHECK_SET_FACTORY_CMD_LOG   1063
+#define IDC_BTN_READ_ISP_VER            1064
+#define IDC_EDIT_READ_ISP_VER           1065
 #define ID_SETTING_CONFIG               32771
 
 // Next default values for new objects
@@ -83,7 +85,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        202
 #define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1064
+#define _APS_NEXT_CONTROL_VALUE         1066
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

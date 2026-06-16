@@ -52,13 +52,35 @@ void SettingsService::LoadBaseSettingFromIni(const CString& path)
 	if (GetPrivateProfileString(_T("Base"), _T("RemoteSnPath"), _T(""), buffer, _countof(buffer), path) > 0)
 	{
 		CStringA temp = CT2A(buffer);
-		strcpy_s(baseOption_.szRemoteSnPath, sizeof(baseOption_.szRemoteSnPath), temp);
+		DWORD dwResult = GetFileAttributes(CA2T(temp));
+		if (dwResult == INVALID_FILE_ATTRIBUTES)
+		{
+			// If the file doesn't exist, clear the path to avoid confusion
+			GetCurrentDirectory(_countof(buffer), buffer);
+			CString defaultPath = CString(buffer) + _T("\\RemoteSn.ini");
+			strcpy_s(baseOption_.szRemoteSnPath, sizeof(baseOption_.szRemoteSnPath), CT2A(defaultPath));
+		}
+		else
+		{
+			strcpy_s(baseOption_.szRemoteSnPath, sizeof(baseOption_.szRemoteSnPath), temp);
+		}
 	}
 
 	if (GetPrivateProfileString(_T("Base"), _T("ReportPath"), _T(""), buffer, _countof(buffer), path) > 0)
 	{
 		CStringA temp = CT2A(buffer);
-		strcpy_s(baseOption_.szReportPath, sizeof(baseOption_.szReportPath), temp);
+		DWORD dwResult = GetFileAttributes(CA2T(temp));
+		if (dwResult == INVALID_FILE_ATTRIBUTES)
+		{
+			// If the file doesn't exist, clear the path to avoid confusion
+			GetCurrentDirectory(_countof(buffer), buffer);
+			CString defaultPath = CString(buffer) + _T("\\XHSUM");
+			strcpy_s(baseOption_.szReportPath, sizeof(baseOption_.szReportPath), CT2A(defaultPath));
+		}
+		else
+		{
+			strcpy_s(baseOption_.szReportPath, sizeof(baseOption_.szReportPath), temp);
+		}
 	}
 
 	// Load serial port parameters
@@ -170,4 +192,9 @@ void SettingsService::LoadRemoteSnToMainParam()
 	{
 		memcpy(sharedOption_.mainPrm.psn_mask, buffer,sizeof(sharedOption_.mainPrm.psn_mask));
 	}
+}
+
+CString SettingsService::GetIspPath() const
+{
+	return GetUfsOption()->mainPrm.strIspPath;
 }

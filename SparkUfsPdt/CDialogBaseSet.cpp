@@ -137,7 +137,7 @@ void CDialogBaseSet::OnBnClickedBtnSetReportSel()
     TCHAR currentDirectory[MAX_PATH] = {};
     GetCurrentDirectory(MAX_PATH, currentDirectory);
     CString initialDir(currentDirectory);
-
+    initialDir.AppendFormat("\\");
     CFolderPickerDialog dlg(initialDir, OFN_PATHMUSTEXIST, this, 0);
     if (dlg.DoModal() == IDOK)
     {

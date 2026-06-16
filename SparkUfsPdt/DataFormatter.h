@@ -20,6 +20,7 @@ public:
 	// Encode ISP mark string (16 chars) into 12-byte isp mark as used by VerifyIsp
 	// Returns empty optional (all zeros) on parse failure
 	static std::array<BYTE, 12> EncodeIspMark(const char* ispMark16);
+	static std::array<BYTE, 12> EncodeIspMark2(const char* ispMark16);
 };
 
 }} // namespace

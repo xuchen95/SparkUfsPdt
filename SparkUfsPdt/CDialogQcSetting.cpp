@@ -183,7 +183,7 @@ void CDialogQcSetting::OnBnClickedBtnQcSramPathSel()
 	char currentDirectory[MAX_PATH] = {};
 	GetCurrentDirectory(MAX_PATH, currentDirectory);
 	CString initialDir;
-	initialDir.Format(_T("%hs"), currentDirectory);
+	initialDir.Format(_T("%hs\\BIN"), currentDirectory);
 
 	CFileDialog fileDlg(TRUE,
 		_T("bin"),

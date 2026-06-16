@@ -18,6 +18,7 @@ public:
 	// Get encoded 12-byte mark (as used by VerifyIsp); returns true if valid
 	bool GetEncodedMark(unsigned char* outBuf, size_t outLen) const;
 
+	bool ReadIspMarkFromFile(const char* filePath,char* outBuf,size_t outLen);
 private:
 	IspMarkCache() = default;
 	static constexpr int ISP_MARK_SIZE = 16;

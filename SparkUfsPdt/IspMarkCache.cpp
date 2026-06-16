@@ -36,7 +36,19 @@ bool IspMarkCache::GetEncodedMark(unsigned char* outBuf, size_t outLen) const
 	if (outBuf == nullptr || outLen < 12) return false;
 	char raw[ISP_MARK_SIZE + 1] = {0};
 	if (!GetRawMark(raw, sizeof(raw))) return false;
-	auto encoded = DataFormatter::EncodeIspMark(raw);
+	auto encoded = DataFormatter::EncodeIspMark2(raw);
 	memcpy(outBuf, encoded.data(), 12);
 	return true;
+}
+
+bool spark::ufspdt::IspMarkCache::ReadIspMarkFromFile(const char* filePath, char* outBuf, size_t outLen)
+{
+	if (filePath == nullptr || outBuf == nullptr || outLen < ISP_MARK_SIZE) return false;
+	FILE* f = nullptr;
+	errno_t err = fopen_s(&f, filePath, "rb");
+	if (err != 0 || f == nullptr) return false;
+	fseek(f, -ISP_MARK_SIZE, SEEK_END);
+	size_t read = fread(outBuf, 1, ISP_MARK_SIZE, f);
+	fclose(f);
+	return read == ISP_MARK_SIZE;
 }

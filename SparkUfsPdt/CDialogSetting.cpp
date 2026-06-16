@@ -489,7 +489,7 @@ void CDialogSetting::OnBnClickedBtnSettingSave()
 	{
 		MessageBox(_T("Save successful."), _T("Setting"), MB_OK);
 
-		EndDialog(IDOK);
+		//EndDialog(IDOK);
 	}
 }
 

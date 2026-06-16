@@ -34,4 +34,6 @@ protected:
 private:
 	void UpdateControlStates();
 
+public:
+	afx_msg void OnBnClickedBtnReadIspVer();
 };

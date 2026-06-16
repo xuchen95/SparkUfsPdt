@@ -15,7 +15,7 @@ public:
 	void LoadBaseSettingFromIni(const CString& path);
 	void SaveBaseSettingToIni(const CString& path);
 	void LoadRemoteSnToMainParam();
-
+	CString GetIspPath() const;
 private:
 	SettingsService();
 	~SettingsService() = default;

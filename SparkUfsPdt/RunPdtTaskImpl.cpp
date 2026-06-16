@@ -21,10 +21,10 @@ using TaskProgressMsg = CSparkUfsPdtDlg::TaskProgressMsg;
 CRITICAL_SECTION CSparkUfsPdtDlg::g_logLock;
 bool CSparkUfsPdtDlg::g_logLockInited = false;
 
-struct SparkLogAutoInit {
-    SparkLogAutoInit() { SparkLog_Init(); }
-};
-static SparkLogAutoInit g_sparkLogAutoInit;
+//struct SparkLogAutoInit {
+//    SparkLogAutoInit() { SparkLog_Init(); }
+//};
+//static SparkLogAutoInit g_sparkLogAutoInit;
 
 // Execute ordered stages using PrefStartContext + GenericState helper.
 // Returns error code and sets outLastStageName on failure.

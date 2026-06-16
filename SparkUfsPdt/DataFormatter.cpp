@@ -80,3 +80,10 @@ std::array<BYTE, 12> DataFormatter::EncodeIspMark(const char* ispMark16)
 	memcpy(out.data() + 8, ispMark16, 4);
 	return out;
 }
+
+std::array<BYTE, 12> spark::ufspdt::DataFormatter::EncodeIspMark2(const char* ispMark16)
+{
+	std::array<BYTE, 12> out = { 0 };
+	memcpy(out.data(), ispMark16, out.size());
+	return out;
+}

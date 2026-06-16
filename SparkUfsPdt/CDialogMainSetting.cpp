@@ -6,7 +6,8 @@
 #include "afxdialogex.h"
 #include "CDialogMainSetting.h"
 #include "PubFunc.h"
-
+#include "IspMarkCache.h"
+#include "SettingsService.h"
 // CDialogMainSetting 对话框
 
 IMPLEMENT_DYNAMIC(CDialogMainSetting, CDialogEx)
@@ -165,6 +166,7 @@ BEGIN_MESSAGE_MAP(CDialogMainSetting, CDialogEx)
 	ON_BN_CLICKED(IDC_CHECK_EN_DL_TESTERFW, &CDialogMainSetting::OnBnClickedCheckDlTesterfw)
 	ON_BN_CLICKED(IDC_CHECK_ISP_DL, &CDialogMainSetting::OnBnClickedCheckIspDl)
 	ON_BN_CLICKED(IDC_CHECK_CID_DL, &CDialogMainSetting::OnBnClickedCheckCidDl)
+	ON_BN_CLICKED(IDC_BTN_READ_ISP_VER, &CDialogMainSetting::OnBnClickedBtnReadIspVer)
 END_MESSAGE_MAP()
 
 
@@ -175,7 +177,7 @@ void CDialogMainSetting::OnBnClickedBtnTesterfwPathSel()
 	char currentDirectory[MAX_PATH] = {};
 	GetCurrentDirectory(MAX_PATH, currentDirectory);
 	CString initialDir;
-	initialDir.Format(_T("%hs"), currentDirectory);
+	initialDir.Format(_T("%hs\\Tester_3350"), currentDirectory);
 
 	CFileDialog fileDlg(TRUE,
 		_T("bin"),
@@ -197,7 +199,7 @@ void CDialogMainSetting::OnBnClickedBtnIspPathSel()
 	char currentDirectory[MAX_PATH] = {};
 	GetCurrentDirectory(MAX_PATH, currentDirectory);
 	CString initialDir;
-	initialDir.Format(_T("%hs"), currentDirectory);
+	initialDir.Format(_T("%hs\\BIN"), currentDirectory);
 
 	CFileDialog fileDlg(TRUE,
 		_T("bin"),
@@ -266,4 +268,34 @@ void CDialogMainSetting::OnBnClickedCheckIspDl()
 void CDialogMainSetting::OnBnClickedCheckCidDl()
 {
 	UpdateControlStates();
+}
+
+void CDialogMainSetting::OnBnClickedBtnReadIspVer()
+{
+	// Read encoded ISP mark from cache and display hex string in IDC_EDIT_READ_ISP_VER
+	unsigned char encoded[16] = { 0 };
+	if (!spark::ufspdt::IspMarkCache::Instance().ReadIspMarkFromFile(
+		SettingsService::Instance().GetIspPath(), 
+		reinterpret_cast<char*>(encoded), 
+		sizeof(encoded) )
+		)
+	{
+		if (CWnd* pEdit = GetDlgItem(IDC_EDIT_READ_ISP_VER))
+			pEdit->SetWindowText(_T(""));
+		return;
+	}
+
+	CString hexW;
+	for (int i = 0; i < 8; ++i)
+	{
+		CString part;
+		part.Format(_T("%02X"), static_cast<unsigned int>(encoded[i]));
+		if (2==i) hexW += _T('-');
+		hexW += part;
+	}
+	if (CWnd* pEdit = GetDlgItem(IDC_EDIT_READ_ISP_VER))
+	{
+		pEdit->SetWindowText(hexW);
+	}
+
 }
