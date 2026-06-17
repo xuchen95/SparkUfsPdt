@@ -736,3 +736,29 @@ int spark::sm3350::CSparkSm3350Util::UfsGetGeometry(PCHAR pData)
     return ERROR_SUCCESS;
 }
 
+int spark::sm3350::CSparkSm3350Util::UFSReadProductRevisionLevel(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadStringDescriptor(pData, 0x04,0x0A))) return ret;
+    } while (0);
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UFSReadID(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsWriteBufferUpiu(nullptr, 0x534D494E,0x00,0x00))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadBufferUpiu(pData, 0x00000301, 0x00000800, 0x04))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+
+    } while (0);
+    return ERROR_SUCCESS;
+}
+

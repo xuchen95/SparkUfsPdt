@@ -130,6 +130,7 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
         // helper to call CImpState methods by binding
         pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+        pushStage(_T("ReadID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("Write1024KIspMp"), [&](TaskContext& ctx)->int { return ctx.state->Write1024KIspMpStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
@@ -227,6 +228,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
         pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
+        pushStage(_T("ReadPrvLvl"), [&](TaskContext& ctx)->int { return ctx.state->ReadProductRevisionLevelStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyIspStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });

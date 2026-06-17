@@ -8,7 +8,7 @@ typedef struct SparkLog_Config
 {
     char func_name[32];
     uint8_t ufs_port; // 0-based port index or port id
-    char card_id[32];
+    char UID[32];
     char fw_version[32];
     char app_version[32];
     char tester_version[32];

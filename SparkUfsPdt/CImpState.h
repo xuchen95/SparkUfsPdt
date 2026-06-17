@@ -39,13 +39,15 @@ public:
     int VerifyCidStage(int portIndex, pdt_log_config_t& lg);
     int VerifyGeometryStage(int portIndex, pdt_log_config_t& lg);
     int VerifySnStage(int portIndex, pdt_log_config_t& lg);
-
+    int ReadProductRevisionLevelStage(int portIndex, pdt_log_config_t& lg);
+    int VerifyUIDStage(int portIndex, pdt_log_config_t& lg);
     //Set Data functions
     void SetSnData(int portIndex, char* pData);
     void SetMdtData(char* pData);
     void GetQCIspString(char* isp);
     void GetIspMark(char* isp);
-
+    //Is Valid UID
+    BOOL IsValidUid(char* pUID, int nUidSize = 512, char* pValidUidBuff = nullptr);
     // Allow caller to pre-cache allocated SN for a port (UTF-16)
     void SetCachedSnForPort(int portIndex, const CStringW& sn);
 

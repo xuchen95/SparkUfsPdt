@@ -80,13 +80,19 @@ static void LogWorker()
             pdt_log_config_t cfg = g_logQueue.front();
             g_logQueue.pop();
             lk.unlock();
-
+            char tmp[4];
+            char szUID[64] = { 0 };
+			for (int i = 0; i < 16; ++i)
+			{
+				sprintf_s(tmp, "%02X ", (unsigned char)cfg.UID[i]);
+                strcat_s(szUID, tmp);
+			}
             // format ANSI line directly into a char buffer
             char lineAnsi[2048];
             _snprintf_s(lineAnsi, _countof(lineAnsi), _TRUNCATE,
-                "Port=%d,Func=%s,CardId=%s,FW=%s,APP=%s,Tester=%s,MID=0x%02X,OID=0x%02X,Manu=%s,Product=%s,SN=%s,Start=%s %s,Build=%d,State=%s,Error=0x%X",
+                "Port=%d,Func=%s,UID=%s,FW=%s,APP=%s,Tester=%s,MID=0x%02X,OID=0x%02X,Manu=%s,Product=%s,SN=%s,Start=%s %s,Build=%d,State=%s,Error=0x%X",
                 (int)cfg.ufs_port,
-                cfg.func_name, cfg.card_id, cfg.fw_version, cfg.app_version, cfg.tester_version,
+                cfg.func_name, szUID, cfg.fw_version, cfg.app_version, cfg.tester_version,
                 (unsigned char)cfg.mid[0], (unsigned char)cfg.oid[0], cfg.manufacturer, cfg.product_name,
                 cfg.serial_number, cfg.start_date, cfg.start_time, cfg.build_time, cfg.stage, cfg.error_code);
 
@@ -185,6 +191,12 @@ void SparkLog_Close()
 
 void SparkLog_EnqueuePdtLog(const pdt_log_config_t& cfg)
 {
+    // Lazy-init logging thread to ensure enqueue works even if caller forgot init.
+    if (!g_sparkLogInited)
+    {
+        SparkLog_Init();
+    }
+
     {
         std::lock_guard<std::mutex> lk(g_queueMutex);
         g_logQueue.push(cfg);

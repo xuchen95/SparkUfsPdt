@@ -146,7 +146,7 @@ int CSm3350Vcmds::UfsReadBufferUpiu(PCHAR pData, uint32_t cmd, uint32_t allocLen
     m_Cdb.ufs1.cmd = _byteswap_ulong(cmd);
     m_Cdb.ufs1.AllocLen = _byteswap_ulong(allocLen);
     m_Cdb.ufs1.uLen = Len;
-    return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, 1, m_Cdb);
+    return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, Len, m_Cdb);
 }
 
 int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEraseGoodBlock)

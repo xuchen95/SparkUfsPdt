@@ -490,6 +490,52 @@ void CImpState::GetIspMark(char* isp)
     memcpy(isp, encoded, sizeof(encoded));
 }
 
+BOOL CImpState::IsValidUid(char* pUID, int nUidSize, char* pValidUidBuff)
+{
+    // 输入基础校验：pUID不能为空、长度必须512；存结果的缓冲区非空才拷贝
+    if (pUID == nullptr || nUidSize != 512)
+    {
+        return FALSE;
+    }
+
+    const int GROUP_COUNT = 2;
+    const int GROUP_SIZE = 32;
+    const int UID_PART = 16; // 有效UID占16字节
+
+    for (int group = 0; group < GROUP_COUNT; group++)
+    {
+        char* pGroup = pUID + group * GROUP_SIZE;
+        char* pRaw = pGroup;
+        char* pCheck = pGroup + UID_PART;
+
+        bool bCurGroupOk = true;
+        for (int i = 0; i < UID_PART; i++)
+        {
+            BYTE rawByte = (BYTE)pRaw[i];
+            BYTE checkByte = (BYTE)pCheck[i];
+            if ((rawByte ^ checkByte) != 0xFF)
+            {
+                bCurGroupOk = false;
+                break;
+            }
+        }
+
+        // 当前分组校验成功
+        if (bCurGroupOk)
+        {
+            // 外部传入缓冲区有效，则把匹配成功的16字节UID复制出去
+            if (pValidUidBuff != nullptr)
+            {
+                memcpy(pValidUidBuff, pRaw, UID_PART);
+            }
+            return TRUE;
+        }
+    }
+
+    // 所有分组全部无效
+    return FALSE;
+}
+
 void CImpState::SetMdtData(char* pData)
 {
     if (pData == nullptr) return;
@@ -1032,6 +1078,73 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
         strncpy_s(lg.stage, _countof(lg.stage), "VerifySn Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+int CImpState::ReadProductRevisionLevelStage(int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+
+
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    char pData[512] = { 0 };
+
+    do
+    {
+        if ((ret = sm3350.UFSReadProductRevisionLevel(pData)) != ERROR_SUCCESS) break;
+
+    } while (0);
+
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
+        lg.error_code = ret;
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "ReadPRVLvl Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+int CImpState::VerifyUIDStage(int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char pData[512 * 4] = { 0 };
+    const size_t ASICIDOffset = 0;
+    const size_t FlashIDOffset = 512;
+    const size_t UniqueIDOffset = 1024;
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    do
+    {
+        if ((ret = sm3350.UFSReadID(pData)) != ERROR_SUCCESS) break;
+    } while (0);
+
+    if (!IsValidUid(pData + UniqueIDOffset, 512, lg.UID))
+    {
+        //show invalid UID
+        memcpy(lg.UID, pData + UniqueIDOffset, 16);
+        ret = ERR_INVALID_UID;
+    }
+
+
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
+        lg.error_code = ret;
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyUID Failed", _TRUNCATE);
     }
     return ret;
 }
