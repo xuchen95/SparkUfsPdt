@@ -68,6 +68,7 @@ public:
     // ==============================================
     static UINT HexStringToUInt(const CString& strHex);
 
+    static bool ReadSerialNumberRange(UINT& nSnStart, UINT& nSnEnd);
     static bool AcquireAndAdvanceSerialNumber(CString& allocatedSn);
     static bool ReadTextFileA(const CString& path, CStringA& content);
     static CString GetGitVersionString();

@@ -262,7 +262,8 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
     }
     Sleep(300);
@@ -277,7 +278,7 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     if (notifier_)
     {
-        notifier_->PostTaskProgress(portIndex, -1, 0, StageNameFromFunction(_T(__FUNCTION__)));
+        notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
     ret = sm3350.UpiuForceRom();
@@ -287,7 +288,7 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
             CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
-            notifier_->PostTaskProgress(portIndex, 0, ret, fmt);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
@@ -393,7 +394,8 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskStatus(portIndex, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
@@ -593,7 +595,7 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
             CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
-            notifier_->PostTaskProgress(portIndex, -1, ret, fmt);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
@@ -626,11 +628,44 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
         strncpy_s(lg.stage, _countof(lg.stage), "VerifyISP Failed", _TRUNCATE);
+    }
+    return ret;
+}
+
+int CImpState::VerifyQcIspStage(int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char ispString[16] = { 0 };
+    char pData[512 * 8] = { 0 };
+    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
+    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    do
+    {
+        GetQCIspString(ispString);
+        if ((ret = sm3350.UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
+        if (memcmp(ispString, pData, 8))
+        {
+            ret = ERR_ISP_VER_MISMATCH;
+        }
+        
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
+        lg.error_code = ret;
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyQcISP Failed", _TRUNCATE);
     }
     return ret;
 }
@@ -651,7 +686,8 @@ int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
         if (notifier_)
         {
             CString stage = StageNameFromFunction(_T(__FUNCTION__));
-            notifier_->PostTaskProgress(portIndex, -1, ret, stage);
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
@@ -842,7 +878,8 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
     constexpr size_t MID_DATA_OFFSET = (16 * 20 + 4);
     constexpr size_t PNM_DATA_OFFSET = (16 * 44 + 6);
     constexpr size_t PSN_DATA_OFFSET = (16 * 76 + 2);
-
+    constexpr size_t MDT_DATA_OFFSET = (16 * 76 + 9);
+    constexpr size_t PRV_DATA_OFFSET = (16 * 92);
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     if (pOpt == nullptr)
@@ -861,95 +898,107 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
             //---------------------------------------------------------------------
             // MNM: 修复大端 WCHAR 比较
             //---------------------------------------------------------------------
-            const SIZE_T mnmFieldChars = sizeof(pOpt->qcPrm.mnm);
-            WCHAR mnmExpected[sizeof(pOpt->qcPrm.mnm)] = { 0 };
-            const size_t mnmSrcLen = strnlen_s(pOpt->qcPrm.mnm, sizeof(pOpt->qcPrm.mnm));
-            if (mnmSrcLen > 0)
+            if (pOpt->qcPrm.bCheckMnm)
             {
-                if (!CPubFunc::CharToWChar(pOpt->qcPrm.mnm, (int)mnmSrcLen, mnmExpected, (int)mnmFieldChars))
+                const SIZE_T mnmFieldChars = sizeof(pOpt->qcPrm.mnm);
+                WCHAR mnmExpected[sizeof(pOpt->qcPrm.mnm)] = { 0 };
+                const size_t mnmSrcLen = strnlen_s(pOpt->qcPrm.mnm, sizeof(pOpt->qcPrm.mnm));
+                if (mnmSrcLen > 0)
+                {
+                    if (!CPubFunc::CharToWChar(pOpt->qcPrm.mnm, (int)mnmSrcLen, mnmExpected, (int)mnmFieldChars))
+                    {
+                        ret = ERR_MNM_MISMATCH;
+                        break;
+                    }
+                }
+
+                // pData 是大端 WCHAR，逐个字节反转再比较
+                bool mnmMatch = true;
+                const WCHAR* pMnmData = (const WCHAR*)(pData + MNM_DATA_OFFSET);
+                for (size_t i = 0; i < mnmSrcLen; i++)
+                {
+                    WCHAR beChar = pMnmData[i];
+                    WCHAR leChar = _byteswap_ushort((USHORT)beChar); // 大端 → 小端
+                    if (leChar != mnmExpected[i])
+                    {
+                        mnmMatch = false;
+                        break;
+                    }
+                }
+                if (!mnmMatch)
                 {
                     ret = ERR_MNM_MISMATCH;
                     break;
                 }
             }
-
-            // pData 是大端 WCHAR，逐个字节反转再比较
-            bool mnmMatch = true;
-            const WCHAR* pMnmData = (const WCHAR*)(pData + MNM_DATA_OFFSET);
-            for (size_t i = 0; i < mnmSrcLen; i++)
-            {
-                WCHAR beChar = pMnmData[i];
-                WCHAR leChar = _byteswap_ushort((USHORT)beChar); // 大端 → 小端
-                if (leChar != mnmExpected[i])
-                {
-                    mnmMatch = false;
-                    break;
-                }
-            }
-            if (!mnmMatch)
-            {
-                ret = ERR_MNM_MISMATCH;
-                break;
-            }
+            
 
             //---------------------------------------------------------------------
             // 4KB Count 
             //---------------------------------------------------------------------
-            ULONG capRaw = 0;
-            memcpy(&capRaw, pData + CAP_DATA_OFFSET, sizeof(capRaw));
-            const ULONG n4KBCntD = pOpt->qcPrm.n4KBCnt;
-            const ULONG n4KBCntS = _byteswap_ulong(capRaw);
-            if (n4KBCntD != n4KBCntS)
+            if (pOpt->qcPrm.bCheckDiskInfo)
             {
-                ret = ERR_4KBCNT_MISMATCH;
-                break;
-            }
-
-            //---------------------------------------------------------------------
-            // MID
-            //---------------------------------------------------------------------
-            const SIZE_T midLen = sizeof(pOpt->qcPrm.mid);
-            if (memcmp(pOpt->qcPrm.mid, pData + MID_DATA_OFFSET, midLen) != 0)
-            {
-                ret = ERR_MID_MISMATCH;
-                break;
-            }
-
-            //---------------------------------------------------------------------
-            // PNM: 
-            //---------------------------------------------------------------------
-            const SIZE_T pnmFieldChars = sizeof(pOpt->qcPrm.pnm);
-            WCHAR pnmExpected[sizeof(pOpt->qcPrm.pnm)] = { 0 };
-            const size_t pnmSrcLen = strnlen_s(pOpt->qcPrm.pnm, sizeof(pOpt->qcPrm.pnm));
-            if (pnmSrcLen == 0)
-            {
-                ret = ERR_PNM_MISMATCH;
-                break;
-            }
-            if (!CPubFunc::CharToWChar(pOpt->qcPrm.pnm, (int)pnmSrcLen, pnmExpected, (int)pnmFieldChars))
-            {
-                ret = ERR_PNM_MISMATCH;
-                break;
-            }
-
-            // pData 是大端 WCHAR，逐个字节反转再比较
-            bool pnmMatch = true;
-            const WCHAR* pPnmData = (const WCHAR*)(pData + PNM_DATA_OFFSET);
-            for (size_t i = 0; i < pnmSrcLen; i++)
-            {
-                WCHAR beChar = pPnmData[i];
-                WCHAR leChar = _byteswap_ushort((USHORT)beChar);
-                if (leChar != pnmExpected[i])
+                ULONG capRaw = 0;
+                memcpy(&capRaw, pData + CAP_DATA_OFFSET, sizeof(capRaw));
+                const ULONG n4KBCntD = pOpt->qcPrm.n4KBCnt;
+                const ULONG n4KBCntS = _byteswap_ulong(capRaw);
+                if (n4KBCntD != n4KBCntS)
                 {
-                    pnmMatch = false;
+                    ret = ERR_4KBCNT_MISMATCH;
                     break;
                 }
             }
-            if (!pnmMatch)
+            //---------------------------------------------------------------------
+            // MID
+            //---------------------------------------------------------------------
+            if (pOpt->qcPrm.bCheckMidOid)
             {
-                ret = ERR_PNM_MISMATCH;
-                break;
+                const SIZE_T midLen = sizeof(pOpt->qcPrm.mid);
+                if (memcmp(pOpt->qcPrm.mid, pData + MID_DATA_OFFSET, midLen) != 0)
+                {
+                    ret = ERR_MID_MISMATCH;
+                    break;
+                }
             }
+            //---------------------------------------------------------------------
+            // PNM: 
+            //---------------------------------------------------------------------
+            if (pOpt->qcPrm.bCheckPnm)
+            {
+                const SIZE_T pnmFieldChars = sizeof(pOpt->qcPrm.pnm);
+                WCHAR pnmExpected[sizeof(pOpt->qcPrm.pnm)] = { 0 };
+                const size_t pnmSrcLen = strnlen_s(pOpt->qcPrm.pnm, sizeof(pOpt->qcPrm.pnm));
+                if (pnmSrcLen == 0)
+                {
+                    ret = ERR_PNM_MISMATCH;
+                    break;
+                }
+                if (!CPubFunc::CharToWChar(pOpt->qcPrm.pnm, (int)pnmSrcLen, pnmExpected, (int)pnmFieldChars))
+                {
+                    ret = ERR_PNM_MISMATCH;
+                    break;
+                }
+
+                // pData 是大端 WCHAR，逐个字节反转再比较
+                bool pnmMatch = true;
+                const WCHAR* pPnmData = (const WCHAR*)(pData + PNM_DATA_OFFSET);
+                for (size_t i = 0; i < pnmSrcLen; i++)
+                {
+                    WCHAR beChar = pPnmData[i];
+                    WCHAR leChar = _byteswap_ushort((USHORT)beChar);
+                    if (leChar != pnmExpected[i])
+                    {
+                        pnmMatch = false;
+                        break;
+                    }
+                }
+                if (!pnmMatch)
+                {
+                    ret = ERR_PNM_MISMATCH;
+                    break;
+                }
+            }
+            
 
             //---------------------------------------------------------------------
             // SN 读取
@@ -963,6 +1012,85 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
                 if (wch == L'\0') break;
                 strSn.AppendChar(wch);
             }
+
+            //---------------------------------------------------------------------
+            // MDT: 
+            //---------------------------------------------------------------------
+            if (pOpt->qcPrm.bCheckMdt)
+            {
+                const SIZE_T mdtFieldChars = sizeof(pOpt->qcPrm.mdt);
+                WCHAR mdtExpected[sizeof(pOpt->qcPrm.mdt)] = { 0 };
+                const size_t mdtSrcLen = strnlen_s(pOpt->qcPrm.mdt, sizeof(pOpt->qcPrm.mdt));
+                if (mdtSrcLen == 0)
+                {
+                    ret = ERR_MDT_MISMATCH;
+                    break;
+                }
+                if (!CPubFunc::CharToWChar(pOpt->qcPrm.mdt, (int)mdtSrcLen, mdtExpected, (int)mdtFieldChars))
+                {
+                    ret = ERR_MDT_MISMATCH;
+                    break;
+                }
+
+                // pData 是大端 WCHAR，逐个字节反转再比较
+                bool mdtMatch = true;
+                const WCHAR* pMdtData = (const WCHAR*)(pData + MDT_DATA_OFFSET);
+                for (size_t i = 0; i < mdtSrcLen; i++)
+                {
+                    WCHAR beChar = pMdtData[i];
+                    WCHAR leChar = _byteswap_ushort((USHORT)beChar);
+                    if (leChar != mdtExpected[i])
+                    {
+                        mdtMatch = false;
+                        break;
+                    }
+                }
+                if (!mdtMatch)
+                {
+                    ret = ERR_MDT_MISMATCH;
+                    break;
+                }
+            }
+            //---------------------------------------------------------------------
+            // PRV: 
+            //---------------------------------------------------------------------
+            if (pOpt->qcPrm.bCheckPrv)
+            {
+                const SIZE_T prvFieldChars = sizeof(pOpt->qcPrm.prv);
+                WCHAR prvExpected[sizeof(pOpt->qcPrm.prv)] = { 0 };
+                const size_t prvSrcLen = strnlen_s(pOpt->qcPrm.prv, sizeof(pOpt->qcPrm.prv));
+                if (prvSrcLen == 0)
+                {
+                    ret = ERR_PRV_MISMATCH;
+                    break;
+                }
+                if (!CPubFunc::CharToWChar(pOpt->qcPrm.prv, (int)prvSrcLen, prvExpected, (int)prvFieldChars))
+                {
+                    ret = ERR_PRV_MISMATCH;
+                    break;
+                }
+
+                // pData 是大端 WCHAR，逐个字节反转再比较
+                bool prvMatch = true;
+                const WCHAR* pPrvData = (const WCHAR*)(pData + PRV_DATA_OFFSET);
+                for (size_t i = 0; i < prvSrcLen; i++)
+                {
+                    WCHAR beChar = pPrvData[i];
+                    WCHAR leChar = _byteswap_ushort((USHORT)beChar);
+                    if (leChar != prvExpected[i])
+                    {
+                        prvMatch = false;
+                        break;
+                    }
+                }
+                if (!prvMatch)
+                {
+                    ret = ERR_PRV_MISMATCH;
+                    break;
+                }
+            }
+
+
         } while (0);
     }
     if (ret != ERROR_SUCCESS)
@@ -1004,13 +1132,17 @@ int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
             break;
 		}
         //capacity
-        DWORD capLaw = _byteswap_ulong(*(DWORD*)(pData + 0x04));
-        DWORD capHigh = _byteswap_ulong(*(DWORD*)(pData + 0x08));
-		if (SectorCntStd != capHigh)
+        if (pOpt->qcPrm.bCheckDiskInfo)
         {
-            ret = ERR_CAPACITY_MISMATCH;
-            break;
+            DWORD capLaw = _byteswap_ulong(*(DWORD*)(pData + 0x04));
+            DWORD capHigh = _byteswap_ulong(*(DWORD*)(pData + 0x08));
+            if (SectorCntStd != capHigh)
+            {
+                ret = ERR_CAPACITY_MISMATCH;
+                break;
+            }
         }
+        
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
@@ -1082,18 +1214,53 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
     return ret;
 }
 
-int CImpState::ReadProductRevisionLevelStage(int portIndex, pdt_log_config_t& lg)
+int CImpState::VerifyPrvStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
 
-
+    PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
     char pData[512] = { 0 };
 
     do
     {
-        if ((ret = sm3350.UFSReadProductRevisionLevel(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350.UFSReadPRV(pData)) != ERROR_SUCCESS) break;
+        if (pOpt->qcPrm.bCheckPrv)
+        {
+            const SIZE_T prvFieldChars = sizeof(pOpt->qcPrm.prv);
+            WCHAR prvExpected[sizeof(pOpt->qcPrm.prv)] = { 0 };
+            const size_t prvSrcLen = strnlen_s(pOpt->qcPrm.prv, sizeof(pOpt->qcPrm.prv));
+            if (prvSrcLen == 0)
+            {
+                ret = ERR_PRV_MISMATCH;
+                break;
+            }
+            if (!CPubFunc::CharToWChar(pOpt->qcPrm.prv, (int)prvSrcLen, prvExpected, (int)prvFieldChars))
+            {
+                ret = ERR_PRV_MISMATCH;
+                break;
+            }
+
+            // pData 是大端 WCHAR，逐个字节反转再比较
+            bool prvMatch = true;
+            const WCHAR* pPrvData = (const WCHAR*)(pData+2);
+            for (size_t i = 0; i < prvSrcLen; i++)
+            {
+                WCHAR beChar = pPrvData[i];
+                WCHAR leChar = _byteswap_ushort((USHORT)beChar);
+                if (leChar != prvExpected[i])
+                {
+                    prvMatch = false;
+                    break;
+                }
+            }
+            if (!prvMatch)
+            {
+                ret = ERR_PRV_MISMATCH;
+                break;
+            }
+        }
 
     } while (0);
 
@@ -1107,7 +1274,7 @@ int CImpState::ReadProductRevisionLevelStage(int portIndex, pdt_log_config_t& lg
         }
         lg.error_code = ret;
         ZeroMemory(lg.stage, sizeof(lg.stage));
-        strncpy_s(lg.stage, _countof(lg.stage), "ReadPRVLvl Failed", _TRUNCATE);
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyPrv Failed", _TRUNCATE);
     }
     return ret;
 }

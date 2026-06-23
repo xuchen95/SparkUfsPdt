@@ -94,7 +94,13 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
 {
     DWORD tStart = GetTickCount();
     int ret = ERROR_SUCCESS;
-
+    PST_UFS_BASE_SETTING pBase = nullptr;
+    PUFS_OPTION pOpt = nullptr;
+    if (state && state->GetSettings())
+    {
+        pBase = state->GetSettings()->GetBaseSetting();
+        pOpt = state->GetSettings()->GetUfsOption();
+    }
     UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
     CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
 
@@ -129,18 +135,31 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
 
         // helper to call CImpState methods by binding
         pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ReadID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
+        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+        {
+            pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+
+        }
+        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+        {
+            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+        }
+        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+        pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("Write1024KIspMp"), [&](TaskContext& ctx)->int { return ctx.state->Write1024KIspMpStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
         if (!bBurnInTest)
         {
             pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-            pushStage(_T("SetMdt"), [&](TaskContext& ctx)->int { return ctx.state->SetMdtStage(ctx.portIndex, *ctx.lg); });
-            pushStage(_T("SetSn"), [&](TaskContext& ctx)->int { return ctx.state->SetSnStage(ctx.portIndex, *ctx.lg); });
-            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-            pushStage(_T("VerifySn"), [&](TaskContext& ctx)->int { return ctx.state->VerifySnStage(ctx.portIndex, *ctx.lg); });
+            if (pOpt->mainPrm.bDLCID)
+            {
+                pushStage(_T("SetMdt"), [&](TaskContext& ctx)->int { return ctx.state->SetMdtStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("SetSn"), [&](TaskContext& ctx)->int { return ctx.state->SetSnStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("VerifySn"), [&](TaskContext& ctx)->int { return ctx.state->VerifySnStage(ctx.portIndex, *ctx.lg); });
+            }
+            
             pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyIspStage(ctx.portIndex, *ctx.lg); });
         }
         pushStage(_T("PowerOff"), [&](TaskContext& ctx)->int { return ctx.state->PowerOffStage(ctx.portIndex, *ctx.lg); });
@@ -200,9 +219,11 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     if (!state) return ERROR_INVALID_PARAMETER;
     // For QC path prefer base setting via adapter from the calling dialog state
     PST_UFS_BASE_SETTING pBase = nullptr;
+    PUFS_OPTION pOpt=nullptr;
     if (state && state->GetSettings())
     {
         pBase = state->GetSettings()->GetBaseSetting();
+        pOpt = state->GetSettings()->GetUfsOption();
     }
     BOOL bForceRomMode = pBase ? pBase->ForceRomMode : FALSE;
     IUiNotifier* notifierQc = state->GetNotifier();
@@ -225,12 +246,38 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
         auto pushStage = [&](const CString& name, std::function<int(TaskContext&)> fn){ stageNames.push_back(name); executors.push_back(fn); };
 
         pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+        {
+			pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+
+		}
+        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+        {
+            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+        }
+        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ReadPrvLvl"), [&](TaskContext& ctx)->int { return ctx.state->ReadProductRevisionLevelStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyIspStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+        if (pOpt->qcPrm.bCheckPrv)
+        {
+            pushStage(_T("VerifyPrv"), [&](TaskContext& ctx)->int { return ctx.state->VerifyPrvStage(ctx.portIndex, *ctx.lg); });
+        }
+        
+        if (pOpt->qcPrm.bCheckIsp)
+        {
+            pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyQcIspStage(ctx.portIndex, *ctx.lg); });
+        }
+        
+        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+        {
+            pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+
+        }
+        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+        {
+            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+        }
+        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("WriteSram"), [&](TaskContext& ctx)->int { return ctx.state->WriteSramStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });

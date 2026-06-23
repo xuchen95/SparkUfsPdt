@@ -32,6 +32,7 @@ public:
     int SetSnStage(int portIndex, pdt_log_config_t& lg);
     int SetMdtStage(int portIndex, pdt_log_config_t& lg);
     int VerifyIspStage(int portIndex, pdt_log_config_t& lg);
+    int VerifyQcIspStage(int portIndex, pdt_log_config_t& lg);
     int WriteSramStage(int portIndex, pdt_log_config_t& lg);
     int VerifySram1Stage(int portIndex, pdt_log_config_t& lg);
     int VerifySram2Stage(int portIndex, pdt_log_config_t& lg);
@@ -39,7 +40,7 @@ public:
     int VerifyCidStage(int portIndex, pdt_log_config_t& lg);
     int VerifyGeometryStage(int portIndex, pdt_log_config_t& lg);
     int VerifySnStage(int portIndex, pdt_log_config_t& lg);
-    int ReadProductRevisionLevelStage(int portIndex, pdt_log_config_t& lg);
+    int VerifyPrvStage(int portIndex, pdt_log_config_t& lg);
     int VerifyUIDStage(int portIndex, pdt_log_config_t& lg);
     //Set Data functions
     void SetSnData(int portIndex, char* pData);

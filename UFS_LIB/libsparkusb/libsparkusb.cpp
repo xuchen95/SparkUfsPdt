@@ -736,7 +736,7 @@ int spark::sm3350::CSparkSm3350Util::UfsGetGeometry(PCHAR pData)
     return ERROR_SUCCESS;
 }
 
-int spark::sm3350::CSparkSm3350Util::UFSReadProductRevisionLevel(PCHAR pData)
+int spark::sm3350::CSparkSm3350Util::UFSReadPRV(PCHAR pData)
 {
     TRACE_FUNC();
     int ret;

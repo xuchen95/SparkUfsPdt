@@ -142,19 +142,15 @@ void CDialogMainSetting::DoDataExchange(CDataExchange* pDX)
 	DDX_HexArray(pDX, IDC_EDIT_MID, pOption->mainPrm.mid, sizeof(pOption->mainPrm.mid));
 	DDX_HexArray(pDX, IDC_EDIT_OID, pOption->mainPrm.oid, sizeof(pOption->mainPrm.oid));
 
-	//DDX_CharArray(pDX, IDC_EDIT_MID, pOption->mainPrm.mid, sizeof(pOption->mainPrm.mid));
-	//DDX_CharArray(pDX, IDC_EDIT_OID, pOption->mainPrm.oid, sizeof(pOption->mainPrm.oid));
 	DDX_CharArray(pDX, IDC_EDIT_PNM, pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm));
 
 
+	CPubFunc::ReadSerialNumberRange(pOption->mainPrm.psn_start, pOption->mainPrm.psn_end);
 	DDX_SN(pDX, IDC_EDIT_SN_START, pOption->mainPrm.psn_start);
 	DDX_SN(pDX, IDC_EDIT_SN_END, pOption->mainPrm.psn_end);
-
-	//DDX_Text(pDX, IDC_EDIT_SN_START, pOption->mainPrm.psn_start);
-	//DDX_Text(pDX, IDC_EDIT_SN_END, pOption->mainPrm.psn_end);
-
+	UpdateDateInMdtField();
 	DDX_CharArray(pDX, IDC_EDIT_SN_MDT, pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt));
-	//DDX_HexArray(pDX, IDC_EDIT_SN_PRV, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv));
+
 	DDX_CharArray(pDX, IDC_EDIT_SN_PRV, pOption->mainPrm.prv, sizeof(pOption->mainPrm.prv));
 	DDX_CharArray(pDX, IDC_EDIT_SN_MANU_NAME, pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm));
 
@@ -298,4 +294,19 @@ void CDialogMainSetting::OnBnClickedBtnReadIspVer()
 		pEdit->SetWindowText(hexW);
 	}
 
+}
+
+void CDialogMainSetting::UpdateDateInMdtField()
+{
+	time_t t = time(nullptr);
+	std::tm tm;
+	localtime_s(&tm, &t);
+	int year = tm.tm_year + 1900 - 2000;
+	int month = tm.tm_mon + 1;
+	char date[5] = { 0 };
+	snprintf(date, sizeof(date), "%02d%02d", year, month);
+	if (PUFS_OPTION pOption = GetUfsOption())
+	{
+		memcpy(pOption->mainPrm.mdt, date, sizeof(pOption->mainPrm.mdt));
+	}
 }

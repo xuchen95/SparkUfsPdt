@@ -217,7 +217,7 @@ namespace spark
             /// </summary>
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
-            int UFSReadProductRevisionLevel(PCHAR pData);
+            int UFSReadPRV(PCHAR pData);
             /// <summary>
             /// Query sm3350 information
             /// </summary>

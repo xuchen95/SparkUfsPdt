@@ -180,62 +180,160 @@ UINT CPubFunc::HexStringToUInt(const CString& strHex)
     return nVal;
 }
 
+bool CPubFunc::ReadSerialNumberRange(UINT& nSnStart, UINT& nSnEnd)
+{
+    // Use the same named mutex as acquire path to keep ini reads consistent with writes.
+    HANDLE hMutex = CreateMutexW(nullptr, FALSE, L"Global\\SparkUfsPdt_AcquireSn_Lock");
+    if (hMutex == nullptr)
+    {
+        return false;
+    }
+
+    DWORD wait = WaitForSingleObject(hMutex, 5000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED)
+    {
+        CloseHandle(hMutex);
+        return false;
+    }
+
+    bool bRet = false;
+    do
+    {
+        // Prefer going through the adapter to read base setting; fall back to default behavior
+        PST_UFS_BASE_SETTING pBase = nullptr;
+        // Some contexts may not have dialog pointer; keep existing behavior by reading the static
+        // base option via CDialogBase instance if possible through a temporary adapter.
+        ::DialogAdapter adapter(&SettingsService::Instance());
+        pBase = adapter.GetBaseSetting();
+        if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
+        {
+            break;
+        }
+
+        CString iniPath = CA2T(pBase->szRemoteSnPath);
+        if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+        {
+            break;
+        }
+
+        WCHAR snStartBuf[128] = {};
+        WCHAR snEndBuf[128] = {};
+        DWORD lenStart = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snStartBuf, _countof(snStartBuf), CT2W(iniPath));
+        DWORD lenEnd = GetPrivateProfileStringW(L"TEST", L"SerialNumber_End", L"", snEndBuf, _countof(snEndBuf), CT2W(iniPath));
+        if (lenStart == 0 || lenEnd == 0)
+        {
+            break;
+        }
+
+        CStringW currentSnStart(snStartBuf);
+        CStringW currentSnEnd(snEndBuf);
+        currentSnStart.Trim();
+        currentSnEnd.Trim();
+        if (currentSnStart.IsEmpty() || currentSnEnd.IsEmpty())
+        {
+            break;
+        }
+
+        errno = 0;
+        wchar_t* endPtr = nullptr;
+        nSnStart = wcstoull(currentSnStart, &endPtr, 16);
+        if (errno != 0 || endPtr == currentSnStart.GetString() || *endPtr != L'\0')
+        {
+            break;
+        }
+
+        nSnEnd = wcstoull(currentSnEnd, &endPtr, 16);
+        if (errno != 0 || endPtr == currentSnEnd.GetString() || *endPtr != L'\0')
+        {
+            break;
+        }
+
+        bRet = true;
+    } while (0);
+
+    ReleaseMutex(hMutex);
+    CloseHandle(hMutex);
+    return bRet;
+}
+
 bool CPubFunc::AcquireAndAdvanceSerialNumber(CString& allocatedSn)
 {
     allocatedSn.Empty();
 
-    // Prefer going through the adapter to read base setting; fall back to default behavior
-    PST_UFS_BASE_SETTING pBase = nullptr;
-    // Some contexts may not have dialog pointer; keep existing behavior by reading the static
-    // base option via CDialogBase instance if possible through a temporary adapter.
-    ::DialogAdapter adapter(&SettingsService::Instance());
-    pBase = adapter.GetBaseSetting();
-    if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
+    // Use a named mutex to prevent cross-process read-modify-write races on the same ini.
+    HANDLE hMutex = CreateMutexW(nullptr, FALSE, L"Global\\SparkUfsPdt_AcquireSn_Lock");
+    if (hMutex == nullptr)
     {
         return false;
     }
 
-    CString iniPath = CA2T(pBase->szRemoteSnPath);
-    if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+    DWORD wait = WaitForSingleObject(hMutex, 5000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED)
     {
+        CloseHandle(hMutex);
         return false;
     }
 
-    WCHAR snBuf[128] = {};
-    DWORD len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snBuf, _countof(snBuf), CT2W(iniPath));
-    if (len == 0)
+    bool bRet = false;
+    do
     {
-        return false;
-    }
+        // Prefer going through the adapter to read base setting; fall back to default behavior
+        PST_UFS_BASE_SETTING pBase = nullptr;
+        // Some contexts may not have dialog pointer; keep existing behavior by reading the static
+        // base option via CDialogBase instance if possible through a temporary adapter.
+        ::DialogAdapter adapter(&SettingsService::Instance());
+        pBase = adapter.GetBaseSetting();
+        if (pBase == nullptr || !pBase->bSnSeparateIni || pBase->szRemoteSnPath[0] == '\0')
+        {
+            break;
+        }
 
-    CStringW currentSn(snBuf);
-    currentSn.Trim();
-    if (currentSn.IsEmpty())
-    {
-        return false;
-    }
+        CString iniPath = CA2T(pBase->szRemoteSnPath);
+        if (iniPath.IsEmpty() || GetFileAttributes(iniPath) == INVALID_FILE_ATTRIBUTES)
+        {
+            break;
+        }
 
-    errno = 0;
-    wchar_t* endPtr = nullptr;
-    unsigned long long currentValue = wcstoull(currentSn, &endPtr, 16);
-    if (errno != 0 || endPtr == currentSn.GetString() || *endPtr != L'\0')
-    {
-        return false;
-    }
+        WCHAR snBuf[128] = {};
+        DWORD len = GetPrivateProfileStringW(L"TEST", L"SerialNumber", L"", snBuf, _countof(snBuf), CT2W(iniPath));
+        if (len == 0)
+        {
+            break;
+        }
 
-    allocatedSn = CString(currentSn);
+        CStringW currentSn(snBuf);
+        currentSn.Trim();
+        if (currentSn.IsEmpty())
+        {
+            break;
+        }
 
-    unsigned long long nextValue = currentValue + 1;
-    int width = currentSn.GetLength();
-    CStringW nextSn;
-    nextSn.Format(L"%0*llX", width > 0 ? width : 1, nextValue);
+        errno = 0;
+        wchar_t* endPtr = nullptr;
+        unsigned long long currentValue = wcstoull(currentSn, &endPtr, 16);
+        if (errno != 0 || endPtr == currentSn.GetString() || *endPtr != L'\0')
+        {
+            break;
+        }
 
-    if (!WritePrivateProfileStringW(L"TEST", L"SerialNumber", nextSn, CT2W(iniPath)))
-    {
-        return false;
-    }
+        allocatedSn = CString(currentSn);
 
-    return true;
+        unsigned long long nextValue = currentValue + 1;
+        int width = currentSn.GetLength();
+        CStringW nextSn;
+        nextSn.Format(L"%0*llX", width > 0 ? width : 1, nextValue);
+
+        if (!WritePrivateProfileStringW(L"TEST", L"SerialNumber", nextSn, CT2W(iniPath)))
+        {
+            break;
+        }
+
+        bRet = true;
+    } while (0);
+
+    ReleaseMutex(hMutex);
+    CloseHandle(hMutex);
+    return bRet;
 }
 
 bool CPubFunc::ReadTextFileA(const CString& path, CStringA& content)

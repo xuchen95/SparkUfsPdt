@@ -36,4 +36,5 @@ private:
 
 public:
 	afx_msg void OnBnClickedBtnReadIspVer();
+	void UpdateDateInMdtField();
 };

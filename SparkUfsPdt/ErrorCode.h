@@ -15,3 +15,4 @@
 #define ERR_SN_MISMATCH          0xF0C
 #define ERR_INVALID_DATA         0xF0D
 #define ERR_INVALID_UID          0xF0E
+#define ERR_PRV_MISMATCH		  0xF0F
