@@ -116,7 +116,18 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
     if (settings && settings->GetUfsOption()) bBurnInTest = settings->GetUfsOption()->mainPrm.bBurnInTest;
 
     lg.ufs_port = (uint8_t)portIndex;
-    strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
+    CString strFunName;
+
+    if (bBurnInTest)
+    {
+		strFunName = _T("FT1");
+
+	}
+    else
+    {
+        strFunName = _T("FT3");
+    }
+    strncpy_s(lg.func_name, _countof(lg.func_name), CT2A(strFunName, CP_UTF8), _TRUNCATE);
 
     CTime now = CTime::GetCurrentTime();
     CStringA dateA(now.Format(_T("%Y-%m-%d")));
@@ -228,7 +239,8 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     BOOL bForceRomMode = pBase ? pBase->ForceRomMode : FALSE;
     IUiNotifier* notifierQc = state->GetNotifier();
     lg.ufs_port = (uint8_t)portIndex;
-    strncpy_s(lg.func_name, _countof(lg.func_name), "RunFtTaskImpl", _TRUNCATE);
+    CString strFunName = _T("QC");
+    strncpy_s(lg.func_name, _countof(lg.func_name), CT2A(strFunName, CP_UTF8), _TRUNCATE);
 
     CTime now = CTime::GetCurrentTime();
     CStringA dateA(now.Format(_T("%Y-%m-%d")));
@@ -256,6 +268,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
             pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
         }
         //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+        pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
         if (pOpt->qcPrm.bCheckPrv)
