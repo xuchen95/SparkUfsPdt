@@ -90,11 +90,11 @@ static void LogWorker()
             // format ANSI line directly into a char buffer
             char lineAnsi[2048];
             _snprintf_s(lineAnsi, _countof(lineAnsi), _TRUNCATE,
-                "Port=%d,Func=%s,UID=%s,FW=%s,APP=%s,Tester=%s,MID=0x%02X,OID=0x%02X,Manu=%s,Product=%s,SN=%s,Start=%s %s,Build=%d,State=%s,Error=0x%X",
+                "Port=%d,Func=%s,UID=%s,FW=%s,APP=%s,Tester=%s,MID=0x%s,OID=0x%s,Manu=%s,Product=%s,SN=%s,PRV=%s,Start=%s %s,Build=%d,State=%s,Error=0x%X",
                 (int)cfg.ufs_port,
                 cfg.func_name, szUID, cfg.fw_version, cfg.app_version, cfg.tester_version,
-                (unsigned char)cfg.mid[0], (unsigned char)cfg.oid[0], cfg.manufacturer, cfg.product_name,
-                cfg.serial_number, cfg.start_date, cfg.start_time, cfg.build_time, cfg.stage, cfg.error_code);
+                cfg.mid, cfg.oid, cfg.manufacturer, cfg.product_name,
+                cfg.serial_number, cfg.prv, cfg.start_date, cfg.start_time, cfg.build_time, cfg.stage, cfg.error_code);
 
             // write to file as ANSI (no conversion)
             FILE* fp = NULL;

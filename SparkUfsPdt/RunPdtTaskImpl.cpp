@@ -168,6 +168,7 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
                 pushStage(_T("SetMdt"), [&](TaskContext& ctx)->int { return ctx.state->SetMdtStage(ctx.portIndex, *ctx.lg); });
                 pushStage(_T("SetSn"), [&](TaskContext& ctx)->int { return ctx.state->SetSnStage(ctx.portIndex, *ctx.lg); });
                 pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
                 pushStage(_T("VerifySn"), [&](TaskContext& ctx)->int { return ctx.state->VerifySnStage(ctx.portIndex, *ctx.lg); });
             }
             
@@ -270,6 +271,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
         //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+        pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
         if (pOpt->qcPrm.bCheckPrv)
         {

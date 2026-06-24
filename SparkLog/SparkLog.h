@@ -12,11 +12,12 @@ typedef struct SparkLog_Config
     char fw_version[32];
     char app_version[32];
     char tester_version[32];
-    uint8_t mid[2];
-    uint8_t oid[2];
+    char mid[32];
+    char oid[32];
     char manufacturer[32];
     char product_name[32];
     char serial_number[58];
+    char prv[8];
     char start_date[32];
     char start_time[32];
     int build_time;

@@ -37,6 +37,7 @@ public:
     int VerifySram1Stage(int portIndex, pdt_log_config_t& lg);
     int VerifySram2Stage(int portIndex, pdt_log_config_t& lg);
 
+    int ReadCidStage(int portIndex, pdt_log_config_t& lg);
     int VerifyCidStage(int portIndex, pdt_log_config_t& lg);
     int VerifyGeometryStage(int portIndex, pdt_log_config_t& lg);
     int VerifySnStage(int portIndex, pdt_log_config_t& lg);
@@ -47,6 +48,7 @@ public:
     void SetMdtData(char* pData);
     void GetQCIspString(char* isp);
     void GetIspMark(char* isp);
+    BOOL WCharFieldCompare(const char* pField1,const char* pField2, int nSize);
     //Is Valid UID
     BOOL IsValidUid(char* pUID, int nUidSize = 512, char* pValidUidBuff = nullptr);
     // Allow caller to pre-cache allocated SN for a port (UTF-16)
