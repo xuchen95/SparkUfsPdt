@@ -8,4 +8,6 @@ public:
 	virtual void PostTaskProgress(int portIndex, int progress, int result, const CString& status) = 0;
 	// Status-only helper: does not carry numeric progress, used for stage entry and failures
 	virtual void PostTaskStatus(int portIndex, int result, const CString& status) = 0;
+	// Update a port's SN text in the device list.
+	virtual void PostPortSerial(int portIndex, const CString& serial) = 0;
 };

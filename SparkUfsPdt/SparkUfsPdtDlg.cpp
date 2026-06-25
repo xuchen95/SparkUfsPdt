@@ -101,11 +101,12 @@ void CSparkUfsPdtDlg::UpdatePortUI(int portIndex, const PortState& newState)
         pList->SetItemText(idx, 3, newState.drive);
     }
 
-    // Update Start Time
-    CString curStart = pList->GetItemText(idx, 4);
-    if (!newState.startTime.IsEmpty() && curStart != newState.startTime)
+    // Update SerialNo
+    CString curSn = pList->GetItemText(idx, 4);
+    CString snText = CW2T(newState.serial.GetString());
+    if (!snText.IsEmpty() && curSn != snText)
     {
-        pList->SetItemText(idx, 4, newState.startTime);
+        pList->SetItemText(idx, 4, snText);
     }
 
     // Update 3350Version
@@ -115,12 +116,11 @@ void CSparkUfsPdtDlg::UpdatePortUI(int portIndex, const PortState& newState)
         pList->SetItemText(idx, 5, newState.version3350);
     }
 
-    // Update SerialNo
-    CString curSn = pList->GetItemText(idx, 6);
-    CString snText = CW2T(newState.serial.GetString());
-    if (!snText.IsEmpty() && curSn != snText)
+    // Update Start Time
+    CString curStart = pList->GetItemText(idx, 6);
+    if (!newState.startTime.IsEmpty() && curStart != newState.startTime)
     {
-        pList->SetItemText(idx, 6, snText);
+        pList->SetItemText(idx, 6, newState.startTime);
     }
 
     // Update MID
@@ -707,6 +707,25 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                 else m_failCount += 1;
                 UpdateStatusBarText();
                 break;
+            case spark::ufspdt::UICommand::SetPortSerial:
+                if (u.portIndex >= 0 && u.portIndex < UI_THREAD_COUNT && !u.text.empty())
+                {
+                    CString snText = CA2T(u.text.c_str(), CP_UTF8);
+                    // Update immediately to avoid waiting for throttle timer.
+                    CListCtrl* pListSn = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+                    if (pListSn)
+                    {
+                        CString portName; portName.Format(_T("Port %d"), u.portIndex + 1);
+                        LVFINDINFO fi = { 0 }; fi.flags = LVFI_STRING; fi.psz = portName;
+                        int idx = pListSn->FindItem(&fi);
+                        if (idx >= 0)
+                        {
+                            pListSn->SetItemText(idx, 4, snText);
+                        }
+                    }
+                    m_ports[u.portIndex].serial = CStringW(snText);
+                }
+                break;
             default:
                 break;
             }
@@ -920,7 +939,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
     // Initialize static pool if not created. Use 4 threads as default.
     if (!s_pool)
     {
-        s_pool.reset(new ThreadPool(16));
+        s_pool.reset(new ThreadPool(UI_THREAD_COUNT));
     }
     if (!g_logLockInited)
     {
@@ -945,7 +964,7 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
                     if (CPubFunc::AcquireAndAdvanceSerialNumber(snAllocated))
                     {
 
-                        pList->SetItemText(i, 6, snAllocated);
+                        pList->SetItemText(i, 4, snAllocated);
                     }
                     else
                     {
@@ -1099,9 +1118,9 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
         pList->InsertColumn(1, _T("Progress"), LVCFMT_LEFT, 150);
         pList->InsertColumn(2, _T("Status"), LVCFMT_LEFT, 150);
         pList->InsertColumn(3, _T("Drive"), LVCFMT_LEFT, 60);
-        pList->InsertColumn(4, _T("Start Time"), LVCFMT_LEFT, 120);
+        pList->InsertColumn(4, _T("SerialNo"), LVCFMT_LEFT, 120);
         pList->InsertColumn(5, _T("3350Version"), LVCFMT_LEFT, 100);
-        pList->InsertColumn(6, _T("SerialNo"), LVCFMT_LEFT, 120);
+        pList->InsertColumn(6, _T("Start Time"), LVCFMT_LEFT, 120);
         pList->InsertColumn(7, _T("MID"), LVCFMT_LEFT, 80);
         pList->InsertColumn(8, _T("OID"), LVCFMT_LEFT, 80);
         pList->InsertColumn(9, _T("FW Version"), LVCFMT_LEFT, 100);
@@ -1115,9 +1134,9 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             pList->SetItemText(idx, 1, _T(""));
             pList->SetItemText(idx, 2, _T(""));
             pList->SetItemText(idx, 3, _T("")); // Drive
-            pList->SetItemText(idx, 4, _T(""));
+            pList->SetItemText(idx, 4, _T("")); // SerialNo
             pList->SetItemText(idx, 5, _T("")); // 3350Version
-            pList->SetItemText(idx, 6, _T("")); // SerialNo
+            pList->SetItemText(idx, 6, _T("")); // Start Time
             pList->SetItemText(idx, 7, _T("")); // MID
             pList->SetItemText(idx, 8, _T("")); // OID
             pList->SetItemText(idx, 9, _T("")); // FW Version
@@ -1145,9 +1164,9 @@ void CSparkUfsPdtDlg::InitListViewItems()
             //pList->SetItemText(i, 1, _T("")); // Progress column will be covered by progress control
             pList->SetItemText(i, 2, _T(""));
             pList->SetItemText(i, 3, _T("")); // Drive
-            pList->SetItemText(i, 4, _T(""));
+            pList->SetItemText(i, 4, _T("")); // SerialNo
             pList->SetItemText(i, 5, _T("")); // 3350Version
-            pList->SetItemText(i, 6, _T("")); // SerialNo
+            pList->SetItemText(i, 6, _T("")); // Start Time
             pList->SetItemText(i, 7, _T("")); // MID
             pList->SetItemText(i, 8, _T("")); // OID
             pList->SetItemText(i, 9, _T("")); // FW Version
@@ -1417,7 +1436,7 @@ LRESULT CSparkUfsPdtDlg::OnGetPortSn(WPARAM wParam, LPARAM lParam)
     int idx = pList->FindItem(&fi);
     if (idx >= 0)
     {
-        CString sn = pList->GetItemText(idx, 6);
+        CString sn = pList->GetItemText(idx, 4);
         *pOut = sn;
     }
     return 1;

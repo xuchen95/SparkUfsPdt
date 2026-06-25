@@ -273,10 +273,10 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
         pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
         pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
-        if (pOpt->qcPrm.bCheckPrv)
+        /*if (pOpt->qcPrm.bCheckPrv)
         {
             pushStage(_T("VerifyPrv"), [&](TaskContext& ctx)->int { return ctx.state->VerifyPrvStage(ctx.portIndex, *ctx.lg); });
-        }
+        }*/
         
         if (pOpt->qcPrm.bCheckIsp)
         {

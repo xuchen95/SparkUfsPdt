@@ -57,6 +57,9 @@ private:
 
 	struct QueueEntry {
 		std::array<SlotEntry, MAX_PORTS> slots;
+		// UI events must be queued (not single-slot overwritten), otherwise
+		// rapid commands on the same port can drop earlier UI intents.
+		std::vector<UIEvent> uiQueue;
 		// Per-entry mutex to protect slot-level updates while avoiding
 		// holding the global map mutex for long periods.
 		std::mutex lock;

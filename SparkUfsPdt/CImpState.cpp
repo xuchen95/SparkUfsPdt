@@ -450,6 +450,7 @@ void CImpState::SetSnData(int portIndex, char* pData)
             cachedSn = CStringW(pWide, static_cast<int>(wcharCount));
         }
         // Store full converted content into cache
+        cachedSn = cachedSn.Mid(1, 18);
         SetCachedSnForPort(portIndex, cachedSn);
     }
 
@@ -869,6 +870,11 @@ int CImpState::ReadCidStage(int portIndex, pdt_log_config_t& lg)
 			WCharToCharFromBeField(PNM_DATA_OFFSET, sizeof(pOpt->mainPrm.pnm), lg.product_name, sizeof(lg.product_name));
 			ZeroMemory(lg.serial_number, sizeof(lg.serial_number));
 			WCharToCharFromBeField(PSN_DATA_OFFSET, 18, lg.serial_number, sizeof(lg.serial_number));
+            if (notifier_)
+            {
+                CString snText(lg.serial_number);
+                notifier_->PostPortSerial(portIndex, snText);
+            }
 			WCharToCharFromBeField(PRV_DATA_OFFSET, 4, lg.prv, sizeof(lg.prv));
         } while (0);
     }
@@ -1094,12 +1100,11 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
             //---------------------------------------------------------------------
             // SN 校验
             //---------------------------------------------------------------------
-
-            for (int i = 0; i < 64; i += 2)
+            char* pSn = pData + PSN_DATA_OFFSET+2;
+            for (int i = 0; i < 36; i += 2)
             {
-                USHORT beValue = (pData[PSN_DATA_OFFSET + i] << 8) | pData[PSN_DATA_OFFSET + i + 1];
+                USHORT beValue = (pSn[i] << 8) | pSn[i + 1];
                 WCHAR wch = beValue;
-                if(0 == i || i>36) wch = _byteswap_ushort(beValue);
                 if (wch == L'\0') break;
                 strSn.AppendChar(wch);
             }

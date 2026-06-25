@@ -31,19 +31,11 @@ void EventBus::PublishUI(HWND target, const UIEvent& uiEvt)
 		}
 	}
 
-	int p = uiEvt.portIndex;
-	if (p < 0 || p >= (int)entryPtr->slots.size())
-	{
-		// default to slot 0 for global commands
-		p = 0;
-	}
-
-	// Protect slot update with per-entry lock to avoid races with ConsumeAllUI
+	// UI events are queued to preserve ordering and avoid overwrite when
+	// multiple commands target the same port in quick succession.
 	{
 		std::lock_guard<std::mutex> lk(entryPtr->lock);
-		auto &slot = entryPtr->slots[p];
-		slot.uiEvt = uiEvt;
-		slot.uiDirty.store(true, std::memory_order_release);
+		entryPtr->uiQueue.push_back(uiEvt);
 	}
 
 	// Notify UI thread immediately for UI events
@@ -261,17 +253,9 @@ std::vector<UIEvent> EventBus::ConsumeAllUI(HWND target)
 		entryPtr = it->second;
 	}
 
-	// Lock the entry while reading and clearing uiDirty flags
 	{
 		std::lock_guard<std::mutex> lk(entryPtr->lock);
-		for (int i = 0; i < (int)entryPtr->slots.size(); ++i)
-		{
-			if (entryPtr->slots[i].uiDirty.load(std::memory_order_acquire))
-			{
-				out.push_back(entryPtr->slots[i].uiEvt);
-				entryPtr->slots[i].uiDirty.store(false, std::memory_order_release);
-			}
-		}
+		out.swap(entryPtr->uiQueue);
 		// reset pending flag
 		entryPtr->pending.store(false);
 	}

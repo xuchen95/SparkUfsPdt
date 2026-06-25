@@ -14,6 +14,7 @@ namespace spark { namespace ufspdt {
 		SetScanButtonEnabled,
 		IncrementPassCount,
 		IncrementFailCount,
+		SetPortSerial,
 		// reserved for future commands
 	};
 
