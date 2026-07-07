@@ -120,6 +120,13 @@ public:
 		PostUiCommand(spark::ufspdt::UICommand::SetPortSerial, portIndex, 0, serial);
 	}
 
+	void PostPortTemp(int portIndex, const CString& temp) override
+	{
+		if (!dlg_) return;
+		if (temp.IsEmpty()) return;
+		PostUiCommand(spark::ufspdt::UICommand::SetPortTemp, portIndex, 0, temp);
+	}
+
 	// Format a status string consistently for failures: "<Stage> Failed (0xXXXX)"
 	static CString FormatFailureStatus(const CString& stage, int errCode)
 	{

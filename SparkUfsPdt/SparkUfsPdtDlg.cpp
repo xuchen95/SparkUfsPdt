@@ -52,7 +52,7 @@ void CSparkUfsPdtDlg::EnqueuePendingPortState(int portIndex, const PortState& de
     if (!delta.statusText.IsEmpty()) dst.statusText = delta.statusText;
     if (!delta.drive.IsEmpty()) dst.drive = delta.drive;
     if (!delta.startTime.IsEmpty()) dst.startTime = delta.startTime;
-    if (!delta.version3350.IsEmpty()) dst.version3350 = delta.version3350;
+    if (!delta.temp.IsEmpty()) dst.temp = delta.temp;
     if (!delta.serial.IsEmpty()) dst.serial = delta.serial;
     if (!delta.mid.IsEmpty()) dst.mid = delta.mid;
     if (!delta.oid.IsEmpty()) dst.oid = delta.oid;
@@ -109,11 +109,11 @@ void CSparkUfsPdtDlg::UpdatePortUI(int portIndex, const PortState& newState)
         pList->SetItemText(idx, 4, snText);
     }
 
-    // Update 3350Version
-    CString curVer = pList->GetItemText(idx, 5);
-    if (!newState.version3350.IsEmpty() && curVer != newState.version3350)
+    // Update temp
+    CString curTemp = pList->GetItemText(idx, 5);
+    if (!newState.temp.IsEmpty() && curTemp != newState.temp)
     {
-        pList->SetItemText(idx, 5, newState.version3350);
+        pList->SetItemText(idx, 5, newState.temp);
     }
 
     // Update Start Time
@@ -726,6 +726,24 @@ LRESULT CSparkUfsPdtDlg::OnTaskProgress(WPARAM wParam, LPARAM lParam)
                     m_ports[u.portIndex].serial = CStringW(snText);
                 }
                 break;
+            case spark::ufspdt::UICommand::SetPortTemp:
+                if (u.portIndex >= 0 && u.portIndex < UI_THREAD_COUNT && !u.text.empty())
+                {
+                    CString tempText = CA2T(u.text.c_str(), CP_UTF8);
+                    CListCtrl* pListTemp = static_cast<CListCtrl*>(GetDlgItem(IDC_LIST_DEVICE));
+                    if (pListTemp)
+                    {
+                        CString portName; portName.Format(_T("Port %d"), u.portIndex + 1);
+                        LVFINDINFO fi = { 0 }; fi.flags = LVFI_STRING; fi.psz = portName;
+                        int idx = pListTemp->FindItem(&fi);
+                        if (idx >= 0)
+                        {
+                            pListTemp->SetItemText(idx, 5, tempText);
+                        }
+                    }
+                    m_ports[u.portIndex].temp = tempText;
+                }
+                break;
             default:
                 break;
             }
@@ -1118,8 +1136,8 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
         pList->InsertColumn(1, _T("Progress"), LVCFMT_LEFT, 150);
         pList->InsertColumn(2, _T("Status"), LVCFMT_LEFT, 150);
         pList->InsertColumn(3, _T("Drive"), LVCFMT_LEFT, 60);
-        pList->InsertColumn(4, _T("SerialNo"), LVCFMT_LEFT, 120);
-        pList->InsertColumn(5, _T("3350Version"), LVCFMT_LEFT, 100);
+        pList->InsertColumn(4, _T("SerialNo"), LVCFMT_LEFT, 150);
+        pList->InsertColumn(5, _T("temp"), LVCFMT_LEFT, 100);
         pList->InsertColumn(6, _T("Start Time"), LVCFMT_LEFT, 120);
         pList->InsertColumn(7, _T("MID"), LVCFMT_LEFT, 80);
         pList->InsertColumn(8, _T("OID"), LVCFMT_LEFT, 80);
@@ -1135,7 +1153,7 @@ void CSparkUfsPdtDlg::CreateListViewColumns()
             pList->SetItemText(idx, 2, _T(""));
             pList->SetItemText(idx, 3, _T("")); // Drive
             pList->SetItemText(idx, 4, _T("")); // SerialNo
-            pList->SetItemText(idx, 5, _T("")); // 3350Version
+            pList->SetItemText(idx, 5, _T("")); // temp
             pList->SetItemText(idx, 6, _T("")); // Start Time
             pList->SetItemText(idx, 7, _T("")); // MID
             pList->SetItemText(idx, 8, _T("")); // OID
@@ -1165,7 +1183,7 @@ void CSparkUfsPdtDlg::InitListViewItems()
             pList->SetItemText(i, 2, _T(""));
             pList->SetItemText(i, 3, _T("")); // Drive
             pList->SetItemText(i, 4, _T("")); // SerialNo
-            pList->SetItemText(i, 5, _T("")); // 3350Version
+            pList->SetItemText(i, 5, _T("")); // temp
             pList->SetItemText(i, 6, _T("")); // Start Time
             pList->SetItemText(i, 7, _T("")); // MID
             pList->SetItemText(i, 8, _T("")); // OID

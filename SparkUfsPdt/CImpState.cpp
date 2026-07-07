@@ -668,6 +668,20 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
     {
         if ((ret = sm3350.UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
 
+        if (notifier_)
+        {
+            DWORD temps[4] = {};
+            memcpy(temps, pData + 12, sizeof(temps));
+
+            CString tempText;
+            tempText.Format(_T("%u/%u/%u/%u"),
+                temps[0],
+                temps[1],
+                temps[2],
+                temps[3]);
+            notifier_->PostPortTemp(portIndex, tempText);
+        }
+
         if (memcmp(ispString, pData, 12))
         {
             ret = ERR_ISP_VER_MISMATCH;

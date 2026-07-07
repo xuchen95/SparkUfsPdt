@@ -170,7 +170,7 @@ private:
         CString statusText;
         CString drive;
         CString startTime;
-        CString version3350;
+        CString temp;
         CString mid;
         CString oid;
         CString fwVersion;

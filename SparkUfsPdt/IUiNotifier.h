@@ -10,4 +10,6 @@ public:
 	virtual void PostTaskStatus(int portIndex, int result, const CString& status) = 0;
 	// Update a port's SN text in the device list.
 	virtual void PostPortSerial(int portIndex, const CString& serial) = 0;
+	// Update a port's temp text in the device list.
+	virtual void PostPortTemp(int portIndex, const CString& temp) = 0;
 };
