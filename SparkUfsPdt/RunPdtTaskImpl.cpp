@@ -101,8 +101,6 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
         pBase = state->GetSettings()->GetBaseSetting();
         pOpt = state->GetSettings()->GetUfsOption();
     }
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
@@ -111,6 +109,24 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
     ISettingsProvider* settings = state->GetSettings();
     IUiNotifier* notifier = state->GetNotifier();
     ILogger* logger = state->GetLogger();
+
+    // ===== P1-2 root-cure 1/2 (FT): resolve tester portIndex -> PhyIndex BEFORE any getInstance/DeviceSelect =====
+    spark::sm3350::PhyIndex phyFt = spark::sm3350::CSparkSm3350Util::ResolvePhyIndex(static_cast<UCHAR>(portIndex));
+    spark::sm3350::CSparkSm3350Util* sm3350Ft = nullptr;
+    if (phyFt.IsValid()) {
+        sm3350Ft = &spark::sm3350::CSparkSm3350Util::getInstance(phyFt);
+    }
+    if (!sm3350Ft) {
+        ret = ERROR_NO_SUCH_DEVICE;
+        lg.error_code = (UINT32)ret;
+        strncpy_s(lg.stage, _countof(lg.stage), "NoSuchPort", _TRUNCATE);
+        if (notifier) {
+            CString msg;
+            msg.Format(_T("No physical device for port %d"), portIndex + 1);
+            notifier->PostTaskStatus(portIndex, ret, msg);
+        }
+        // still enqueue the log; fall through to post-run finalization block below
+    }
 
     BOOL bBurnInTest = FALSE;
     if (settings && settings->GetUfsOption()) bBurnInTest = settings->GetUfsOption()->mainPrm.bBurnInTest;
@@ -135,48 +151,60 @@ int RunFtTaskImpl(int portIndex, CImpState* state)
     strncpy_s(lg.start_date, _countof(lg.start_date), dateA.GetString(), _TRUNCATE);
     strncpy_s(lg.start_time, _countof(lg.start_time), timeA.GetString(), _TRUNCATE);
     CString lastStageName = _T("");
-    int selectRet = sm3350.DeviceSelect(u08PhyIdx);
+    int selectRet = sm3350Ft ? sm3350Ft->DeviceSelect(phyFt) : ERROR_NO_SUCH_DEVICE;
     if (selectRet == ERROR_SUCCESS)
     {
-        // Build ordered stage list (name + executor) and run via shared StagePipeline
-        std::vector<CString> stageNames;
-        std::vector<std::function<int(TaskContext&)>> executors;
-
-        auto pushStage = [&](const CString& name, std::function<int(TaskContext&)> fn){ stageNames.push_back(name); executors.push_back(fn); };
-
-        // helper to call CImpState methods by binding
-        pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
-        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+        // ===== P1-1 minimal fix 1/2: guard against null pBase/pOpt BEFORE any dereference =====
+        if (!pBase || !pOpt)
         {
-            pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
-
+            ret = ERROR_INVALID_PARAMETER;
+            lg.error_code = (UINT32)ret;
+            strncpy_s(lg.stage, _countof(lg.stage), "CfgNullPtr", _TRUNCATE);
+            if (notifier) notifier->PostTaskStatus(portIndex, ret, _T("Config (Base/Opt) is NULL"));
         }
-        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+        else
         {
-            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
-        }
-        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("Write1024KIspMp"), [&](TaskContext& ctx)->int { return ctx.state->Write1024KIspMpStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
-        if (!bBurnInTest)
-        {
-            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-            if (pOpt->mainPrm.bDLCID)
+            // Build ordered stage list (name + executor) and run via shared StagePipeline
+            std::vector<CString> stageNames;
+            std::vector<std::function<int(TaskContext&)>> executors;
+
+            auto pushStage = [&](const CString& name, std::function<int(TaskContext&)> fn){ stageNames.push_back(name); executors.push_back(fn); };
+
+            // helper to call CImpState methods by binding
+            pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
+          if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
             {
-                pushStage(_T("SetMdt"), [&](TaskContext& ctx)->int { return ctx.state->SetMdtStage(ctx.portIndex, *ctx.lg); });
-                pushStage(_T("SetSn"), [&](TaskContext& ctx)->int { return ctx.state->SetSnStage(ctx.portIndex, *ctx.lg); });
-                pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-                pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
-                pushStage(_T("VerifySn"), [&](TaskContext& ctx)->int { return ctx.state->VerifySnStage(ctx.portIndex, *ctx.lg); });
-            }
-            
-            pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyIspStage(ctx.portIndex, *ctx.lg); });
-        }
-        pushStage(_T("PowerOff"), [&](TaskContext& ctx)->int { return ctx.state->PowerOffStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
 
-        ret = ExecuteStagesWithPipeline(portIndex, state, notifier, &lg, stageNames, executors, lastStageName);
+            }
+            else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+            {
+                pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+            }
+            pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
+            
+            pushStage(_T("Write1024KIspMp"), [&](TaskContext& ctx)->int { return ctx.state->Write1024KIspMpStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
+            if (!bBurnInTest)
+            {
+                pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+                if (pOpt->mainPrm.bDLCID)
+                {
+                    pushStage(_T("SetMdt"), [&](TaskContext& ctx)->int { return ctx.state->SetMdtStage(ctx.portIndex, *ctx.lg); });
+                    pushStage(_T("SetSn"), [&](TaskContext& ctx)->int { return ctx.state->SetSnStage(ctx.portIndex, *ctx.lg); });
+                    pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+                    pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
+                    pushStage(_T("VerifySn"), [&](TaskContext& ctx)->int { return ctx.state->VerifySnStage(ctx.portIndex, *ctx.lg); });
+                }
+                
+                pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyIspStage(ctx.portIndex, *ctx.lg); });
+                pushStage(_T("ReadAging"), [&](TaskContext& ctx)->int { return ctx.state->ReadAgingStage(ctx.portIndex, *ctx.lg); });
+            }
+            pushStage(_T("PowerOff"), [&](TaskContext& ctx)->int { return ctx.state->PowerOffStage(ctx.portIndex, *ctx.lg); });
+
+            ret = ExecuteStagesWithPipeline(portIndex, state, notifier, &lg, stageNames, executors, lastStageName);
+        }
     }
     else
     {
@@ -223,8 +251,6 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     DWORD tStart = GetTickCount();
     int ret = ERROR_SUCCESS;
     int progress;
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
 
     pdt_log_config_t lg;
     ZeroMemory(&lg, sizeof(lg));
@@ -239,6 +265,24 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     }
     BOOL bForceRomMode = pBase ? pBase->ForceRomMode : FALSE;
     IUiNotifier* notifierQc = state->GetNotifier();
+
+    // ===== P1-2 root-cure 2/2 (QC): resolve tester portIndex -> PhyIndex BEFORE any getInstance/DeviceSelect =====
+    spark::sm3350::PhyIndex phyQc = spark::sm3350::CSparkSm3350Util::ResolvePhyIndex(static_cast<UCHAR>(portIndex));
+    spark::sm3350::CSparkSm3350Util* sm3350Qc = nullptr;
+    if (phyQc.IsValid()) {
+        sm3350Qc = &spark::sm3350::CSparkSm3350Util::getInstance(phyQc);
+    }
+    if (!sm3350Qc) {
+        ret = ERROR_NO_SUCH_DEVICE;
+        lg.error_code = (UINT32)ret;
+        strncpy_s(lg.stage, _countof(lg.stage), "NoSuchPort", _TRUNCATE);
+        if (notifierQc) {
+            CString msg;
+            msg.Format(_T("No physical device for port %d"), portIndex + 1);
+            notifierQc->PostTaskStatus(portIndex, ret, msg);
+        }
+    }
+
     lg.ufs_port = (uint8_t)portIndex;
     CString strFunName = _T("QC");
     strncpy_s(lg.func_name, _countof(lg.func_name), CT2A(strFunName, CP_UTF8), _TRUNCATE);
@@ -249,62 +293,76 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
     strncpy_s(lg.start_date, _countof(lg.start_date), dateA.GetString(), _TRUNCATE);
     strncpy_s(lg.start_time, _countof(lg.start_time), timeA.GetString(), _TRUNCATE);
     CString lastStageName = _T("");
-    int selectRet = sm3350.DeviceSelect(u08PhyIdx);
+    int selectRet = sm3350Qc ? sm3350Qc->DeviceSelect(phyQc) : ERROR_NO_SUCH_DEVICE;
     if (selectRet == ERROR_SUCCESS)
     {
-        // Build QC stage list and run via PrefStartContext
-        std::vector<CString> stageNames;
-        std::vector<std::function<int(TaskContext&)>> executors;
-
-        auto pushStage = [&](const CString& name, std::function<int(TaskContext&)> fn){ stageNames.push_back(name); executors.push_back(fn); };
-
-        pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
-        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+        // ===== P1-1 minimal fix 2/2: guard against null pBase/pOpt BEFORE any dereference =====
+        if (!pBase || !pOpt)
         {
-			pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
-
-		}
-        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
-        {
-            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+            ret = ERROR_INVALID_PARAMETER;
+            lg.error_code = (UINT32)ret;
+            strncpy_s(lg.stage, _countof(lg.stage), "CfgNullPtr", _TRUNCATE);
+            if (notifierQc) notifierQc->PostTaskStatus(portIndex, ret, _T("Config (Base/Opt) is NULL"));
         }
-        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
-        /*if (pOpt->qcPrm.bCheckPrv)
+        else
         {
-            pushStage(_T("VerifyPrv"), [&](TaskContext& ctx)->int { return ctx.state->VerifyPrvStage(ctx.portIndex, *ctx.lg); });
-        }*/
-        
-        if (pOpt->qcPrm.bCheckIsp)
-        {
-            pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyQcIspStage(ctx.portIndex, *ctx.lg); });
-        }
-        
-        if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
-        {
-            pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+            // Build QC stage list and run via PrefStartContext
+            std::vector<CString> stageNames;
+            std::vector<std::function<int(TaskContext&)>> executors;
 
-        }
-        else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
-        {
-            pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
-        }
-        //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("WriteSram"), [&](TaskContext& ctx)->int { return ctx.state->WriteSramStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifySram1"), [&](TaskContext& ctx)->int { return ctx.state->VerifySram1Stage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifySram2"), [&](TaskContext& ctx)->int { return ctx.state->VerifySram2Stage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("VerifyGeometry"), [&](TaskContext& ctx)->int { return ctx.state->VerifyGeometryStage(ctx.portIndex, *ctx.lg); });
-        pushStage(_T("PowerOff"), [&](TaskContext& ctx)->int { return ctx.state->PowerOffStage(ctx.portIndex, *ctx.lg); });
+            auto pushStage = [&](const CString& name, std::function<int(TaskContext&)> fn){ stageNames.push_back(name); executors.push_back(fn); };
 
-        ret = ExecuteStagesWithPipeline(portIndex, state, notifierQc, &lg, stageNames, executors, lastStageName);
+            pushStage(_T("Rebooting"), [&](TaskContext& ctx)->int { return ctx.state->RebootStage(ctx.portIndex, *ctx.lg); });
+            if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+            {
+			    pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+
+		    }
+            else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+            {
+                pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+            }
+            pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("VerifyUID"), [&](TaskContext& ctx)->int { return ctx.state->VerifyUIDStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+            //pushStage(_T("ReadQ100"), [&](TaskContext& ctx)->int { return ctx.state->Q100ReadStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("ReadAging"), [&](TaskContext& ctx)->int { return ctx.state->ReadAgingStage(ctx.portIndex, *ctx.lg); });
+
+            pushStage(_T("ReadCid"), [&](TaskContext& ctx)->int { return ctx.state->ReadCidStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("VerifyCid"), [&](TaskContext& ctx)->int { return ctx.state->VerifyCidStage(ctx.portIndex, *ctx.lg); });
+            /*if (pOpt->qcPrm.bCheckPrv)
+            {
+                pushStage(_T("VerifyPrv"), [&](TaskContext& ctx)->int { return ctx.state->VerifyPrvStage(ctx.portIndex, *ctx.lg); });
+            }*/
+            
+            if (pOpt->qcPrm.bCheckIsp)
+            {
+                pushStage(_T("VerifyIsp"), [&](TaskContext& ctx)->int { return ctx.state->VerifyQcIspStage(ctx.portIndex, *ctx.lg); });
+            }
+            
+            if (pBase->ForceRomMode == UPIU_FORCE_ROM_MODE)
+            {
+                pushStage(_T("UpiuForceRom"), [&](TaskContext& ctx)->int { return ctx.state->UpiuForceRomStage(ctx.portIndex, *ctx.lg); });
+
+            }
+            else if (pBase->ForceRomMode == VCC_FORCE_ROM_MODE)
+            {
+                pushStage(_T("VccOffForceRom"), [&](TaskContext& ctx)->int { return ctx.state->VccOffForceRomStage(ctx.portIndex, *ctx.lg); });
+            }
+            //pushStage(_T("ForceRom"), [&](TaskContext& ctx)->int { return ctx.state->ForceRomStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("MpStart"), [&](TaskContext& ctx)->int { return ctx.state->MpStartStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("WriteSram"), [&](TaskContext& ctx)->int { return ctx.state->WriteSramStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("MpExit"), [&](TaskContext& ctx)->int { return ctx.state->MpExitStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("VerifySram1"), [&](TaskContext& ctx)->int { return ctx.state->VerifySram1Stage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("VerifySram2"), [&](TaskContext& ctx)->int { return ctx.state->VerifySram2Stage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("CardInit"), [&](TaskContext& ctx)->int { return ctx.state->CardInitStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("VerifyGeometry"), [&](TaskContext& ctx)->int { return ctx.state->VerifyGeometryStage(ctx.portIndex, *ctx.lg); });
+            pushStage(_T("PowerOff"), [&](TaskContext& ctx)->int { return ctx.state->PowerOffStage(ctx.portIndex, *ctx.lg); });
+
+            ret = ExecuteStagesWithPipeline(portIndex, state, notifierQc, &lg, stageNames, executors, lastStageName);
+        }
     }
     else
     {
@@ -325,7 +383,7 @@ int RunQcTaskImpl(int portIndex, CImpState* state)
 
     SparkLog_EnqueuePdtLog(lg);
 
-    // Notify UI via adapter. Do not force progress to 100% on failure ¡ª
+    // Notify UI via adapter. Do not force progress to 100% on failure ï¿½ï¿½
     // only report 100 when the overall result is success. On failure keep
     // the last reported progress so UI reflects where it failed.
     if (notifierQc)

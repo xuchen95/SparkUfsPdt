@@ -1,6 +1,7 @@
 #pragma once
 #include <shared_mutex>
 #include "../SparkLog/SparkLog.h"
+#include "libsparkusb.h"        // for PhyIndex / CSparkSm3350Util / ERROR_* (via Windows.h)
 
 #define UPIU_FORCE_ROM_MODE FALSE
 #define VCC_FORCE_ROM_MODE TRUE
@@ -18,6 +19,24 @@ public:
     static bool ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
         char* cDest, size_t cDestLen,
         UINT codePage = CP_ACP);
+
+    // =====================================================================
+    // P1-2 root-cure centralized port-acquisition helper (defined in .cpp).
+    //   * Resolves portIndex (tester id) -> physical idx via checked mapping
+    //   * On miss: sets lg.error_code=ERROR_NO_SUCH_DEVICE, lg.stage="NoSuchPort",
+    //              emits PostTaskStatus through notifier_, returns nullptr.
+    //   * On hit: returns a pointer to the correct in-range CSparkSm3350Util instance
+    //             (never binds out-of-range: zero OOB UB).
+    // Caller pattern in every Stage:
+    //   CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    //   if (!sm3350) return lg.error_code;
+    // NOTE: Definition lives in CImpState.cpp (not inline here) so we keep this
+    //       header free of an #include "IUiNotifier.h" dependency — only a
+    //       forward declaration of IUiNotifier is needed.  The in-class inline
+    //       version dereferenced notifier_->PostTaskStatus() which required the
+    //       full IUiNotifier definition (C2027 "use of undefined type IUiNotifier").
+    // =====================================================================
+    spark::sm3350::CSparkSm3350Util* GetSm3350OrInvalid(int portIndex, pdt_log_config_t& lg);
 
     int PowerOffStage(int portIndex, pdt_log_config_t& lg);
     int RebootStage(int portIndex, pdt_log_config_t& lg);
@@ -43,12 +62,14 @@ public:
     int VerifySnStage(int portIndex, pdt_log_config_t& lg);
     int VerifyPrvStage(int portIndex, pdt_log_config_t& lg);
     int VerifyUIDStage(int portIndex, pdt_log_config_t& lg);
+    int ReadAgingStage(int portIndex, pdt_log_config_t& lg);
+    int Q100ReadStage(int portIndex, pdt_log_config_t& lg);
     //Set Data functions
     void SetSnData(int portIndex, char* pData);
     void SetMdtData(char* pData);
     void GetQCIspString(char* isp);
     void GetIspMark(char* isp);
-    BOOL WCharFieldCompare(const char* pField1,const char* pField2, int nSize);
+    int WCharFieldCompare(const char* pField1,const char* pField2, int nSize);
     //Is Valid UID
     BOOL IsValidUid(char* pUID, int nUidSize = 512, char* pValidUidBuff = nullptr);
     // Allow caller to pre-cache allocated SN for a port (UTF-16)

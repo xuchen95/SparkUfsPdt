@@ -112,6 +112,32 @@ CImpState::CImpState(ISettingsProvider* settings, ILogger* logger, IUiNotifier* 
 {
 }
 
+// =============================================================================
+// P1-2 root-cure centralized port-acquisition helper (moved here from header).
+// See CImpState.h for contract / caller pattern.  Moved out-of-line because
+// the in-class version dereferenced notifier_->PostTaskStatus() before
+// IUiNotifier's full definition was visible → C2027 "use of undefined type
+// IUiNotifier" on MBCS builds.  Keeping the out-of-line definition lets the
+// header rely on a plain forward declaration of IUiNotifier (smaller header
+// graph, no risk of circular include with IUiNotifier.h → CString / MFC).
+// =============================================================================
+spark::sm3350::CSparkSm3350Util* CImpState::GetSm3350OrInvalid(int portIndex, pdt_log_config_t& lg)
+{
+    using namespace spark::sm3350;
+    PhyIndex phy = CSparkSm3350Util::ResolvePhyIndex(static_cast<UCHAR>(portIndex));
+    if (!phy.IsValid()) {
+        lg.error_code = ERROR_NO_SUCH_DEVICE;
+        strncpy_s(lg.stage, _countof(lg.stage), "NoSuchPort", _TRUNCATE);
+        if (notifier_) {
+            CString msg;
+            msg.Format(_T("No physical device for port %d"), portIndex + 1);
+            notifier_->PostTaskStatus(portIndex, ERROR_NO_SUCH_DEVICE, msg);
+        }
+        return nullptr;
+    }
+    return &CSparkSm3350Util::getInstance(phy);
+}
+
 bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
     char* cDest, size_t cDestLen,
     UINT codePage)
@@ -140,9 +166,29 @@ bool CImpState::ConvertWCharDataToCharData(const WCHAR* wSrc, size_t wSrcLen,
         return false;
     }
 
+    // P2-10 fix (Plan A: strict failure, identical policy to convertLen==0 above):
+    //
+    // OLD buggy code was:
+    //   if ((size_t)convertLen >= cDestLen) { memcpy(cDest, tempBuf.data(), cDestLen); /* return true! */ }
+    //
+    // TWO bugs in the old branch:
+    //  (1) The function returned TRUE (claimed success), so the caller had no idea
+    //      the output got truncated (SN / model strings / CID fields got mangled
+    //      silently → production traceability lost).
+    //  (2) memcpy() filled the ENTIRE cDestLen bytes with payload, leaving ZERO
+    //      bytes for a trailing NUL and writing no terminator.  Any caller that
+    //      treated cDest as a C string (strlen / strcmp / strcpy_s without
+    //      explicit length, printf("%s"), etc.) read PAST cDest into uninitialised
+    //      stack memory → OOB read + garbage in downstream logs & reports.
+    //
+    // NEW Plan A: treat "too small" exactly the same as "conversion failed (0 bytes):
+    //  memset the output buffer to all zeros (safe empty C-string, guaranteed NULs
+    //  even for callers that skip the bool return check) and return false so
+    //  attentive callers get a clear signal.
     if (static_cast<size_t>(convertLen) >= cDestLen)
     {
-        memcpy(cDest, tempBuf.data(), cDestLen);
+        memset(cDest, 0, cDestLen);
+        return false;
     }
     else
     {
@@ -156,11 +202,11 @@ int CImpState::PowerOffStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UfsPowerOff()) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsPowerOff()) != ERROR_SUCCESS) break;
         Sleep(100);
     } while (0);
 
@@ -185,17 +231,17 @@ int CImpState::RebootStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     //char pData[512 * 8] = { 0 };
     //DEBUG data
     //SetMdtData(pDlg, pData);
     //SetSnData(pDlg, portIndex, pData);
     do
     {
-        if ((ret = sm3350.UfsPowerOff()) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsPowerOff()) != ERROR_SUCCESS) break;
         Sleep(1000);
-        if ((ret = sm3350.UfsPowerOn()) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsPowerOn()) != ERROR_SUCCESS) break;
     } while (0);
 
     if (ret != ERROR_SUCCESS)
@@ -218,10 +264,10 @@ int CImpState::CardInitStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
 
-    ret = sm3350.UfsCardInit();
+    ret = sm3350->UfsCardInit();
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -244,7 +290,7 @@ int CImpState::ForceRomStage(int portIndex, pdt_log_config_t& lg)
     BOOL bForceRomMode = FALSE;
     if (settings_ && settings_->GetBaseSetting())
     {
-        bForceRomMode = settings_->GetBaseSetting()->ForceRomMode ? FALSE : FALSE; // preserve behavior for now
+        bForceRomMode = settings_->GetBaseSetting()->ForceRomMode;
     }
     do
     {
@@ -274,14 +320,14 @@ int CImpState::UpiuForceRomStage(int portIndex, pdt_log_config_t& lg)
 {
     int ret = ERROR_SUCCESS;
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     if (notifier_)
     {
         notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
-    ret = sm3350.UpiuForceRom();
+    ret = sm3350->UpiuForceRom();
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -302,14 +348,14 @@ int CImpState::VccOffForceRomStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     if (notifier_)
     {
         notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
-    ret = sm3350.VccOffForceRom();
+    ret = sm3350->VccOffForceRom();
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -331,14 +377,14 @@ int CImpState::MpStartStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     if (notifier_)
     {
         notifier_->PostTaskStatus(portIndex, 0, StageNameFromFunction(_T(__FUNCTION__)));
     }
 
-    ret = sm3350.UfsMpStartMode();
+    ret = sm3350->UfsMpStartMode();
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -360,10 +406,10 @@ int CImpState::Write1024KIspMpStage(int portIndex, pdt_log_config_t& lg)
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
     BOOL bFuncOption = pOpt ? pOpt->mainPrm.funcSel : FALSE;
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
 
-    ret = sm3350.UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption);
+    ret = sm3350->UfsWrite1024KIspMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)), bFuncOption);
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -384,11 +430,11 @@ int CImpState::MpExitStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     // Stage entry: progress/status will be reported by caller pipeline
 
-    ret = sm3350.UfsMpExit();
+    ret = sm3350->UfsMpExit();
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -411,14 +457,20 @@ void CImpState::SetSnData(int portIndex, char* pData)
         return;
     }
     // Use DataFormatter to build SN payload, keep original behavior
-    char meto[4] = {0};
+    char meto1[4] = { 0 };
+	char meto2[4] = { 0 };
     if (!settings_)
     {
         // settings provider missing, cannot format SN reliably
         return;
     }
     PUFS_OPTION pOpt = settings_->GetUfsOption();
-    if (pOpt) memcpy(meto, pOpt->mainPrm.meto, 4);
+    if (pOpt)
+    {
+        memcpy(meto1, pOpt->mainPrm.meto1, 4);
+        memcpy(meto2, pOpt->mainPrm.meto2, 4);
+    }
+
 
     SYSTEMTIME st;
     GetLocalTime(&st);
@@ -426,18 +478,24 @@ void CImpState::SetSnData(int portIndex, char* pData)
     swprintf_s(timeStr, L"%04d%02d%02d", st.wYear, st.wMonth, st.wDay);
 
     wchar_t psn[9] = {0};
-    CString psnText;
-    // Attempt to use cached wide SN if present
+    // CImpState::m_strwSn is CStringW[] (always UTF-16), so use CStringW here too.
+    // On MBCS builds plain `CString' resolves to CStringA, and CStringA::GetString()
+    // returns const char* → C2664 when passed to wcscpy_s(). Declaring CStringW
+    // makes GetString() return PCWSTR unconditionally and matches the source type
+    // exactly (no implicit MBCS conversion round-trip that could lose data).
+    CStringW psnText;
     if (portIndex >= 0 && portIndex < _countof(m_strwSn))
     {
         psnText = m_strwSn[portIndex];
         if (8 == psnText.GetLength())
         {
-            swprintf_s(psn, L"%S", psnText);
+            // P2-7 fix: direct wcscpy_s (known length = 8 + null, fits psn[9] exactly,
+            //      and uses the native wchar_t width).
+            wcscpy_s(psn, _countof(psn), psnText.GetString());
         }
     }
 
-    auto formatted = spark::ufspdt::DataFormatter::FormatSnData(meto, timeStr, psn);
+    auto formatted = spark::ufspdt::DataFormatter::FormatSnData(meto1, meto2, timeStr, psn);
 
     if (portIndex >= 0 && portIndex < _countof(m_strwSn))
     {
@@ -506,39 +564,45 @@ void CImpState::GetIspMark(char* isp)
     memcpy(isp, encoded, sizeof(encoded));
 }
 
-BOOL CImpState::WCharFieldCompare(const char* pField, const char* pSrcField, const int nSize)
+int CImpState::WCharFieldCompare(const char* pField, const char* pSrcField, const int nSize)
 {
-    bool bRet = TRUE;
+    // ===== P0-1 最小改动 1/4: 前置参数校验 (nullptr / 零长) =====
+    if (pField == nullptr || pSrcField == nullptr || nSize <= 0) {
+        return -1;
+    }
+    int bRet = ERROR_SUCCESS;
     const SIZE_T mnmFieldChars = nSize;
-    WCHAR* Expected = new WCHAR[nSize];
-	ZeroMemory(Expected, nSize * sizeof(WCHAR));
+    // P2-9 fix: replace raw new[]/delete[] + ZeroMemory with std::vector<WCHAR>.
+    // vector(size_t) value-initialises each WCHAR to 0 — equivalent to the
+    // removed ZeroMemory.  Any C++ exception thrown by CPubFunc::CharToWChar
+    // (or any future helper added between here and the return) will run the
+    // vector destructor during unwinding and free the buffer → no leak, ever.
+    std::vector<WCHAR> Expected(nSize);
     const size_t DestLen = strnlen_s(pField, nSize);
     if (DestLen > 0)
     {
-        if (!CPubFunc::CharToWChar(pField, (int)DestLen, Expected, (int)mnmFieldChars))
+        if (!CPubFunc::CharToWChar(pField, (int)DestLen, Expected.data(), (int)mnmFieldChars))
         {
-            bRet = FALSE;
+            bRet = -1;
+            // ===== P0-1 最小改动 2/4: 编码失败立即 return, 避免 bRet=-1 被循环覆盖 =====
+            // (delete[] Expected removed — vector destructor runs automatically on return)
+            return bRet;
         }
     }
-
-    // pData 是大端 WCHAR，逐个字节反转再比较
-    bool Match = true;
     //const WCHAR* pSrcData = (const WCHAR*)(pSrcField);
-    for (size_t i = 0; i < DestLen*2; i++)
+    // ===== P0-1 最小改动 3/4: 去掉 *2, i 是"第几个字符"不是字节数（避免 Expected[] 越界读） =====
+    for (size_t i = 0; i < DestLen; i++)
     {
-        WCHAR beChar = *(WCHAR*)(pSrcField+i*2);
+        WCHAR beChar = *(const WCHAR*)(pSrcField+i*2);
         WCHAR leChar = _byteswap_ushort((USHORT)beChar); // 大端 → 小端
         if (leChar != Expected[i])
         {
-            Match = false;
+            // ===== P0-1 最小改动 4/4: 显式强转 int 避免 unsigned short wraparound =====
+			bRet = (int)leChar - (int)Expected[i];
             break;
         }
     }
-    if (!Match)
-    {
-        bRet = FALSE;
-    }
-    delete[] Expected;
+
     return bRet;
 }
 
@@ -603,12 +667,12 @@ int CImpState::SetSnStage(int portIndex, pdt_log_config_t& lg)
     char pData[512 * 8] = { 0 };
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
         SetSnData(portIndex, pData);
-        if ((ret = sm3350.UfsSetSrialNumberString(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsSetSrialNumberString(pData)) != ERROR_SUCCESS) break;
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
@@ -631,13 +695,13 @@ int CImpState::SetMdtStage(int portIndex, pdt_log_config_t& lg)
     char pData[512 * 8] = { 0 };
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
 
     do
     {
         SetMdtData(pData);
-        if ((ret = sm3350.UfsSetManuDate(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsSetManuDate(pData)) != ERROR_SUCCESS) break;
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
@@ -662,25 +726,11 @@ int CImpState::VerifyIspStage(int portIndex, pdt_log_config_t& lg)
 
     GetIspMark(ispString);
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
-
-        if (notifier_)
-        {
-            INT32 temps[4] = {};
-            memcpy(temps, pData + 12, sizeof(temps));
-
-            CString tempText;
-            tempText.Format(_T("%d/%d/%d/%d"),
-                temps[0],
-                temps[1],
-                temps[2],
-                temps[3]);
-            notifier_->PostPortTemp(portIndex, tempText);
-        }
+        if ((ret = sm3350->UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
 
         if (memcmp(ispString, pData, 12))
         {
@@ -707,12 +757,12 @@ int CImpState::VerifyQcIspStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char ispString[16] = { 0 };
     char pData[512 * 8] = { 0 };
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
         GetQCIspString(ispString);
-        if ((ret = sm3350.UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsCheckIsp(pData)) != ERROR_SUCCESS) break;
         if (notifier_)
         {
             INT32 temps[4] = {};
@@ -752,11 +802,11 @@ int CImpState::WriteSramStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UfsWriteSramMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)))) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsWriteSramMp(g_UfsIsp, BYTE2SECTOR(sizeof(g_UfsIsp)))) != ERROR_SUCCESS) break;
     } while (0);
     if (ret != ERROR_SUCCESS)
     {
@@ -779,11 +829,11 @@ int CImpState::VerifySram1Stage(int portIndex, pdt_log_config_t& lg)
     char pData[512 * 8] = { 0 };
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UfsReadSramResult(pData, 8)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsReadSramResult(pData, 8)) != ERROR_SUCCESS) break;
 
         if (!(pData[0] == 0x00 && pData[1] == 0x00 && pData[2] == 0x00 && pData[3] == 0x00))
         {
@@ -812,11 +862,11 @@ int CImpState::VerifySram2Stage(int portIndex, pdt_log_config_t& lg)
     char pData2[512 * 8] = { 0 };
 
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UfsCheckSram2(pData1, pData2)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsCheckSram2(pData1, pData2)) != ERROR_SUCCESS) break;
 
         if (!(pData2[0] == 0x00 && pData2[1] == 0x00 && pData2[2] == 0x00 && pData2[3] == 0x00))
         {
@@ -853,18 +903,22 @@ int CImpState::ReadCidStage(int portIndex, pdt_log_config_t& lg)
     constexpr size_t PRV_DATA_OFFSET = (16 * 92);
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
-    if (pOpt == nullptr)
+    // P2-2 fix: use centralized PhyIndex resolution (same as the other 24 stages).
+    // Previously this stage called GetPhysicalIndex(UCHAR) + getInstance(UCHAR)
+    // directly, bypassing the PhyIndex strong type and range checks, so a
+    // mapping miss (return 0xFF) caused an OOB reference bind and member crash.
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (pOpt == nullptr || !sm3350)
     {
-        ret = ERROR_INVALID_PARAMETER;
+        ret = pOpt ? ERROR_NO_SUCH_DEVICE : ERROR_INVALID_PARAMETER;
+        // NOTE: if !sm3350 then GetSm3350OrInvalid has already set lg.error_code,
+        // lg.stage="NoSuchPort" and posted the UI failure notification.
     }
     else
     {
-        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-
         do
         {
-			if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+			if ((ret = sm3350->UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
 
 			auto WCharToCharFromBeField = [&](size_t offset, size_t wcharCount, char* dest, size_t destLen)
 			{
@@ -931,29 +985,28 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
     constexpr size_t MID_DATA_OFFSET = (16 * 20 + 4);
     constexpr size_t PNM_DATA_OFFSET = (16 * 44 + 6);
     constexpr size_t PSN_DATA_OFFSET = (16 * 76 + 2);
-    constexpr size_t MDT_DATA_OFFSET = (16 * 76 + 9);
+    constexpr size_t MDT_DATA_OFFSET = (16 * 76 + 10);
     constexpr size_t PRV_DATA_OFFSET = (16 * 92);
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
-    if (pOpt == nullptr)
+    // P2-2 fix (VerifyCidStage): same centralized resolver as the other stages.
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (pOpt == nullptr || !sm3350)
     {
-        ret = ERROR_INVALID_PARAMETER;
+        ret = pOpt ? ERROR_NO_SUCH_DEVICE : ERROR_INVALID_PARAMETER;
     }
     else
     {
-        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
-
         do
         {
-            if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+            if ((ret = sm3350->UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
 
             //---------------------------------------------------------------------
             // MNM: 修复大端 WCHAR 比较
             //---------------------------------------------------------------------
             if (pOpt->qcPrm.bCheckMnm)
             {
-                if (WCharFieldCompare(pOpt->qcPrm.mnm, pData + MNM_DATA_OFFSET, sizeof(pOpt->qcPrm.mnm)))
+                if (WCharFieldCompare(pOpt->qcPrm.mnm, pData + MNM_DATA_OFFSET, sizeof(pOpt->qcPrm.mnm)) != ERROR_SUCCESS)
                 {
                     ret = ERR_MNM_MISMATCH;
                     break;
@@ -993,7 +1046,7 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
             //---------------------------------------------------------------------
             if (pOpt->qcPrm.bCheckPnm)
             {
-                if (WCharFieldCompare(pOpt->qcPrm.pnm, pData + PNM_DATA_OFFSET, sizeof(pOpt->qcPrm.pnm)))
+                if (WCharFieldCompare(pOpt->qcPrm.pnm, pData + PNM_DATA_OFFSET, sizeof(pOpt->qcPrm.pnm)) != ERROR_SUCCESS)
                 {
                     ret = ERR_PNM_MISMATCH;
                     break;
@@ -1019,7 +1072,7 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
             //---------------------------------------------------------------------
             if (pOpt->qcPrm.bCheckMdt)
             {
-                if (WCharFieldCompare(pOpt->qcPrm.mdt, pData + MDT_DATA_OFFSET, sizeof(pOpt->qcPrm.mdt)))
+                if (WCharFieldCompare(pOpt->qcPrm.mdt, pData + MDT_DATA_OFFSET, sizeof(pOpt->qcPrm.mdt)) != ERROR_SUCCESS)
                 {
                     ret = ERR_MDT_MISMATCH;
                     break;
@@ -1030,7 +1083,7 @@ int CImpState::VerifyCidStage(int portIndex, pdt_log_config_t& lg)
             //---------------------------------------------------------------------
             if (pOpt->qcPrm.bCheckPrv)
             {
-                if (WCharFieldCompare(pOpt->qcPrm.prv, pData + PRV_DATA_OFFSET, sizeof(pOpt->qcPrm.prv)))
+                if (WCharFieldCompare(pOpt->qcPrm.prv, pData + PRV_DATA_OFFSET, sizeof(pOpt->qcPrm.prv)) != ERROR_SUCCESS)
                 {
                     ret = ERR_PRV_MISMATCH;
                     break;
@@ -1064,12 +1117,12 @@ int CImpState::VerifyGeometryStage(int portIndex, pdt_log_config_t& lg)
     PUFS_OPTION pOpt = settings_->GetUfsOption();
     ULONG SectorCntStd = pOpt ? (pOpt->qcPrm.n4KBCnt * 4 * 2) : 0;
 
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
 
     do
     {
-        if ((ret = sm3350.UfsGetGeometry(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsGetGeometry(pData)) != ERROR_SUCCESS) break;
         //Geometry Identifier
         if(0x57 != pData[0] || 0x07 != pData[1])
         {
@@ -1113,17 +1166,17 @@ int CImpState::VerifySnStage(int portIndex, pdt_log_config_t& lg)
 
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
-    if (pOpt == nullptr)
+    // P2-2 fix (VerifySnStage): centralized PhyIndex resolver + null check.
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (pOpt == nullptr || !sm3350)
     {
-        ret = ERROR_INVALID_PARAMETER;
+        ret = pOpt ? ERROR_NO_SUCH_DEVICE : ERROR_INVALID_PARAMETER;
     }
     else
     {
-        UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-        CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
         do
         {
-            if ((ret = sm3350.UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
+            if ((ret = sm3350->UfsReadCidInfo(pData, BYTE2SECTOR(sizeof(pData)))) != ERROR_SUCCESS) break;
             //---------------------------------------------------------------------
             // SN 校验
             //---------------------------------------------------------------------
@@ -1163,13 +1216,13 @@ int CImpState::VerifyPrvStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
 
     PUFS_OPTION pOpt = settings_ ? settings_->GetUfsOption() : nullptr;
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     char pData[512] = { 0 };
 
     do
     {
-        if ((ret = sm3350.UFSReadPRV(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UFSReadPRV(pData)) != ERROR_SUCCESS) break;
         if (pOpt->qcPrm.bCheckPrv)
         {
             const SIZE_T prvFieldChars = sizeof(pOpt->qcPrm.prv);
@@ -1230,21 +1283,18 @@ int CImpState::VerifyUIDStage(int portIndex, pdt_log_config_t& lg)
     const size_t ASICIDOffset = 0;
     const size_t FlashIDOffset = 512;
     const size_t UniqueIDOffset = 1024;
-    UCHAR u08PhyIdx = CSparkSm3350Util::GetPhysicalIndex((UCHAR)portIndex);
-    CSparkSm3350Util& sm3350 = CSparkSm3350Util::getInstance(u08PhyIdx);
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350.UFSReadID(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UFSReadID(pData)) != ERROR_SUCCESS) break;
+        if (!IsValidUid(pData + UniqueIDOffset, 512, lg.UID))
+        {
+            //show invalid UID
+            memcpy(lg.UID, pData + UniqueIDOffset, 16);
+            ret = ERR_INVALID_UID;
+        }
     } while (0);
-
-    if (!IsValidUid(pData + UniqueIDOffset, 512, lg.UID))
-    {
-        //show invalid UID
-        memcpy(lg.UID, pData + UniqueIDOffset, 16);
-        ret = ERR_INVALID_UID;
-    }
-
-
     if (ret != ERROR_SUCCESS)
     {
         if (notifier_)
@@ -1257,6 +1307,77 @@ int CImpState::VerifyUIDStage(int portIndex, pdt_log_config_t& lg)
         ZeroMemory(lg.stage, sizeof(lg.stage));
         strncpy_s(lg.stage, _countof(lg.stage), "VerifyUID Failed", _TRUNCATE);
     }
+    return ret;
+}
+
+int CImpState::ReadAgingStage(int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char ispString[16] = { 0 };
+    char* pData = new char[512 * 48 * 2];
+
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
+    do
+    {
+        if ((ret = sm3350->UfsReadAging(pData)) != ERROR_SUCCESS) break;
+
+        char modulePath[MAX_PATH] = { 0 };
+        if (GetModuleFileNameA(nullptr, modulePath, _countof(modulePath)) > 0)
+        {
+            char* slash = strrchr(modulePath, '\\');
+            if (slash)
+            {
+                *(slash + 1) = '\0';
+            }
+
+            char outPath[MAX_PATH] = { 0 };
+            _snprintf_s(outPath, _countof(outPath), _TRUNCATE, "%sPort%d_aging.bin", modulePath, portIndex+1);
+            spark::file::fnWriteFile(outPath, pData, 512 * 48 * 2);
+        }
+
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
+        lg.error_code = ret;
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "VerifyISP Failed", _TRUNCATE);
+    }
+	delete[] pData;
+    return ret;
+}
+
+int CImpState::Q100ReadStage(int portIndex, pdt_log_config_t& lg)
+{
+    int ret = ERROR_SUCCESS;
+    char* pData = new char[512 * 0x14];
+    spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
+    if (!sm3350) return lg.error_code;
+    do
+    {
+        if ((ret = sm3350->UfsReadQ100(pData)) != ERROR_SUCCESS) break;
+
+
+    } while (0);
+    if (ret != ERROR_SUCCESS)
+    {
+        if (notifier_)
+        {
+            CString stage = StageNameFromFunction(_T(__FUNCTION__));
+            CString fmt = ::DialogAdapter::FormatFailureStatus(stage, ret);
+            notifier_->PostTaskStatus(portIndex, ret, fmt);
+        }
+        lg.error_code = ret;
+        ZeroMemory(lg.stage, sizeof(lg.stage));
+        strncpy_s(lg.stage, _countof(lg.stage), "Q100Read Failed", _TRUNCATE);
+    }
+    delete[] pData;
     return ret;
 }
 

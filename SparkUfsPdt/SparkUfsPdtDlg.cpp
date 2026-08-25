@@ -659,12 +659,38 @@ int CSparkUfsPdtDlg::RunPdtTask(int portIndex, const CString& allocatedSn /*= CS
         CStringW snW = CA2W(allocatedSn);
         state.SetCachedSnForPort(portIndex, snW);
     }
+
+    // ------------------------------------------------------------------
+    // Issue #1 (P0-2 + P1-4): Global PASS/FAIL counters must be incremented
+    // EXACTLY ONCE per task. The two paths are:
+    //   * PASS  -> the final PostTaskProgress(100, 0, "Success") call inside
+    //              RunXxxTaskImpl triggers IncrementPassCount automatically
+    //              via DialogAdapter policy check.
+    //   * FAIL  -> PostTaskStatus notifications (both per-stage failures AND
+    //              the final RunXxxTaskImpl "lastStageName" notification) are
+    //              for UI display only. The FAIL counter is bumped exactly
+    //              once HERE by the outermost wrapper after the pipeline
+    //              returns a non-zero value. This eliminates the old double-
+    //              counting bug where N failing stages + 1 final notification
+    //              each incremented the counter.
+    // ------------------------------------------------------------------
+    int ret = ERROR_SUCCESS;
     if (isQcConfig)
     {
-        return RunQcTaskImpl(portIndex, &state);
+        ret = RunQcTaskImpl(portIndex, &state);
+    }
+    else
+    {
+        ret = RunFtTaskImpl(portIndex, &state);
     }
 
-    return RunFtTaskImpl(portIndex, &state);
+    if (TaskCountPolicy::ShouldIncrementFailOnTaskFinal(ret))
+    {
+        dlgAdapter.PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
+        dlgAdapter.PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar,   portIndex, 0, CString());
+    }
+
+    return ret;
 }
 
 // UI thread message handler for progress updates
@@ -1067,10 +1093,19 @@ void CSparkUfsPdtDlg::OnBnClickedBtnStartPdt()
 
 void CSparkUfsPdtDlg::OnDestroy()
 {
-    // Cleanup on dialog destroy: shut down the thread pool and delete
-    // the log critical section if it was initialized.
-
-    CDialogEx::OnDestroy();
+    // P2-8 fix 2/2: correct cleanup order.  The canonical MFC sequence for
+    // OnDestroy is:
+    //   1) USER cleanup FIRST (serial ports, threads, thread pool, log,
+    //      critical sections, GDI objects, event-bus unregistration).  These
+    //      may still post messages / reference the HWND / child controls.
+    //   2) Call CDialogEx::OnDestroy() LAST — this is the MFC default handler
+    //      that tears down child control windows, destroys the HWND and fires
+    //      WM_NCDESTROY.  After it returns, our HWND no longer exists, so no
+    //      cleanup code should run after it.
+    //
+    // The old code had this REVERSED: CDialogEx::OnDestroy() at line 1099 ran
+    // BEFORE m_factorySerial.Close() / s_pool.reset() / SparkLog_Close() /
+    // EventBus::Unregister() — so all of those ran against a dead HWND.
 
     m_factorySerial.Close();
 
@@ -1088,7 +1123,8 @@ void CSparkUfsPdtDlg::OnDestroy()
         g_logLockInited = false;
     }
 
-    // Delete GDI objects created by this dialog to avoid leaks
+    // P2-8 fix 1/2: GDI objects deleted EXACTLY ONCE (remove the redundant
+    // 2nd DeleteObject pass that previously appeared below EventBus::Unregister).
     if (m_pdtNameFont.GetSafeHandle())
     {
         m_pdtNameFont.DeleteObject();
@@ -1106,14 +1142,12 @@ void CSparkUfsPdtDlg::OnDestroy()
         m_factoryComLinkedBrushRed.DeleteObject();
     }
 
-    m_pdtNameBrush.DeleteObject();
-    m_factoryComLinkedBrushGreen.DeleteObject();
-    m_factoryComLinkedBrushRed.DeleteObject();
-    m_pdtNameFont.DeleteObject();
-
-    // Unregister EventBus entries for this window to avoid posting to destroyed HWND
+    // Unregister EventBus entries for this window to avoid posting to
+    // a destroyed HWND.  Must run BEFORE the HWND is torn down.
     spark::ufspdt::EventBus::Instance().Unregister(this->GetSafeHwnd());
 
+    // Finally: let MFC destroy the HWND (CDialogEx default handler).
+    CDialogEx::OnDestroy();
 }
 
 // List subclass removed: rely on NM_CUSTOMDRAW owner-draw path for progress rendering

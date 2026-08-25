@@ -3,6 +3,24 @@
 #include "spti.h"
 #include <ntddscsi.h>
 
+namespace
+{
+    void TraceHexLine(const char* title, const BYTE* data, size_t len)
+    {
+        char line[256] = { 0 };
+        char tmp[8] = { 0 };
+        size_t pos = 0;
+
+        pos += sprintf_s(line + pos, sizeof(line) - pos, "%s", title);
+        for (size_t i = 0; i < len && pos < sizeof(line) - 4; ++i)
+        {
+            sprintf_s(tmp, "%02X ", data[i]);
+            pos += sprintf_s(line + pos, sizeof(line) - pos, "%s", tmp);
+        }
+        TRACE("%s\n", line);
+    }
+}
+
 CScsiDriveCmds::CScsiDriveCmds(PCHAR szPath)
 {
     if (szPath != nullptr)
@@ -78,7 +96,7 @@ int CScsiDriveCmds::ScsiSendCmdByte(UCHAR dataIn, PCHAR dataBuffer, UINT byteCnt
     sptdwb.sptd.DataIn = dataIn;
     sptdwb.sptd.SenseInfoLength = SPT_SENSE_LENGTH;
     sptdwb.sptd.DataTransferLength = byteCnt;
-    sptdwb.sptd.TimeOutValue = 30;
+    sptdwb.sptd.TimeOutValue = 200;
     sptdwb.sptd.DataBuffer = dataBuffer;
     sptdwb.sptd.SenseInfoOffset = offsetof(SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER, ucSenseBuf);
     CopyMemory(sptdwb.sptd.Cdb, cdb.ub, sizeof(sptdwb.sptd.Cdb));
@@ -94,6 +112,10 @@ int CScsiDriveCmds::ScsiSendCmdByte(UCHAR dataIn, PCHAR dataBuffer, UINT byteCnt
     if (sptdwb.sptd.ScsiStatus || (status == 0))
     {
         errorCode = GetLastError();
+        TRACE("ScsiSendCmdByte failed: dataIn=%u byteCnt=%u status=%d scsiStatus=0x%02X lastError=0x%08lX bytesReturned=%lu\n",
+            dataIn, byteCnt, status, sptdwb.sptd.ScsiStatus, errorCode, byReturned);
+        TraceHexLine("  CDB: ", sptdwb.sptd.Cdb, sizeof(sptdwb.sptd.Cdb));
+        TraceHexLine("  Sense: ", sptdwb.ucSenseBuf, SPT_SENSE_LENGTH);
     }
 
     return errorCode;

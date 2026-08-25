@@ -360,6 +360,7 @@
     <ClInclude Include="CDialogBase.h" />
     <ClInclude Include="CDialogBaseSet.h" />
     <ClInclude Include="CDialogMainSetting.h" />
+    <ClInclude Include="CDialogPortMapping.h" />
     <ClInclude Include="CDialogQcSetting.h" />
     <ClInclude Include="CDialogSetting.h" />
     <ClInclude Include="CImpState.h" />
@@ -390,6 +391,7 @@
     <ClCompile Include="CDialogBase.cpp" />
     <ClCompile Include="CDialogBaseSet.cpp" />
     <ClCompile Include="CDialogMainSetting.cpp" />
+    <ClCompile Include="CDialogPortMapping.cpp" />
     <ClCompile Include="CDialogQcSetting.cpp" />
     <ClCompile Include="CDialogSetting.cpp" />
     <ClCompile Include="CImpState.cpp" />

@@ -22,6 +22,7 @@
 #endif
 
 #define TRACE_FUNC()        TRACE("%s\n", __FUNCTION__)
+#define SM3350_CMD_DELAY()  Sleep(100)
 //#define MAX_TESTER_LUN          (2)
 //#define MAX_TESTER_PER_LUN      (8)
 
@@ -79,13 +80,68 @@ namespace spark
 
     namespace sm3350
     {
+        // =====================================================================
+        // P1-2 root-cure: Strong-index wrappers — PhyIndex / TesterId.
+        // Only static factories can construct them, and raw values outside
+        // [0, MAX_DEVICE_CNT) are either clamped (FromRawChecked) or marked
+        // invalid (Invalid / invalid inputs to lookup).
+        //
+        // Goal: compile-time prevent passing a random UCHAR (255, 20, ...)
+        // into indexed APIs; runtime clamp ensures zero OOB even when callers
+        // still use the legacy UCHAR overloads we keep for migration.
+        // =====================================================================
+        class LIBSPARK_API PhyIndex {
+        public:
+            // Preferred construction: validates raw; out of range => invalid.
+            static PhyIndex FromRawChecked(UCHAR raw) noexcept {
+                return (raw < MAX_DEVICE_CNT) ? PhyIndex(raw, true) : PhyIndex(0, false);
+            }
+            static PhyIndex Invalid() noexcept { return PhyIndex(0, false); }
+            // Construct from an already-clamped physical index (e.g. loop counter over gu08DeviceCnt).
+            static PhyIndex FromTrusted(UCHAR raw) noexcept {
+                return (raw < MAX_DEVICE_CNT) ? PhyIndex(raw, true) : PhyIndex(0, false);
+            }
+            bool  IsValid() const noexcept { return valid_; }
+            UCHAR value() const noexcept { return val_; }  // always < MAX_DEVICE_CNT when IsValid
+            // Implicitly safe default: 0 when valid=false as well; never UCHAR_MAX.
+        private:
+            PhyIndex(UCHAR v, bool ok) noexcept : val_(v), valid_(ok) {}
+            UCHAR val_;
+            bool  valid_;
+        };
+
+        class LIBSPARK_API TesterId {
+        public:
+            static TesterId FromRawChecked(UCHAR raw) noexcept {
+                return TesterId(raw < MAX_DEVICE_CNT ? raw : UCHAR(MAX_DEVICE_CNT));
+            }
+            static TesterId FromTrusted(UCHAR raw) noexcept {
+                return (raw < MAX_DEVICE_CNT) ? TesterId(raw) : TesterId(UCHAR(MAX_DEVICE_CNT));
+            }
+            bool  IsValid() const noexcept { return val_ < MAX_DEVICE_CNT; }
+            UCHAR value() const noexcept { return val_; }
+        private:
+            explicit TesterId(UCHAR v) noexcept : val_(v) {}
+            UCHAR val_;
+        };
+
         class LIBSPARK_API CSparkSm3350Util
         {
         public:
-            static CSparkSm3350Util& getInstance(UCHAR idx)
+            // ---------- Primary (strongly-typed, root-cured) accessors ----------
+            static CSparkSm3350Util& getInstance(PhyIndex idx) noexcept
             {
+                // PhyIndex.value() is either < MAX_DEVICE_CNT (valid) or 0 (invalid).
+                // So sInstance[idx.value()] is ALWAYS within [0,15] — zero OOB UB.
                 static CSparkSm3350Util sInstance[MAX_DEVICE_CNT];
-                return sInstance[idx];
+                static CSparkSm3350Util sFallback;  // for invalid PhyIndex: never dereferences uninit path
+                return idx.IsValid() ? sInstance[idx.value()] : sFallback;
+            }
+            // Legacy UCHAR overload — auto-clamps, preserves backward compile compatibility.
+            // No OOB possible even if caller passes 255.
+            static CSparkSm3350Util& getInstance(UCHAR idxRaw) noexcept
+            {
+                return getInstance(PhyIndex::FromRawChecked(idxRaw));
             }
 
             CSparkSm3350Util();
@@ -98,19 +154,49 @@ namespace spark
             /// <returns>0: Success or Error code</returns>
             static int EnumSm3350(int nDriverMode = 0);
             static PST_DEVICE_INFO GetDeviceInfo();
-            static PST_DEVICE_INFO GetDeviceInfo(UCHAR id);
-            static UCHAR GetTesterIndex(UCHAR id);
-            static UCHAR GetPhysicalIndex(UCHAR testerIdx);
+            // -------- Primary strong-typed entry points --------
+            // P2-4 fix 1/3: ADD PhyIndex overload. This is the preferred entry point for
+            // stage-level code and for legacy callers (Scan loop) that iterate by
+            // physical-slot index. O(1) direct gstDeviceInfo[phys] access.
+            static PST_DEVICE_INFO GetDeviceInfo(PhyIndex phys) noexcept;
+            // TesterId overload: performs reverse lookup via GetPhysicalIndex (O(n) scan),
+            // then delegates to the PhyIndex overload above. Use only when you truly have
+            // a tester-port number (0-based Port X in the UI minus 1).
+            static PST_DEVICE_INFO GetDeviceInfo(TesterId id) noexcept;
+            static UCHAR          GetTesterIndex(PhyIndex phys) noexcept;  // map phys -> tester id (or UCHAR_MAX)
+            static PhyIndex       GetPhysicalIndex(TesterId tester) noexcept;
+            // -------- Legacy UCHAR wrappers (auto-clamped, zero OOB possible) --------
+            // P2-4 fix 3/3: repoint GetDeviceInfo(UCHAR) to PHY INDEX semantics, so it
+            // matches GetTesterIndex(UCHAR) (both interpret the raw UCHAR as physical
+            // slot index).  This restores correct behavior for callers like the Scan
+            // button loop which passes the SAME i to both GetDeviceInfo(i) and
+            // GetTesterIndex(i).
+            static PST_DEVICE_INFO GetDeviceInfo(UCHAR idRaw) noexcept { return GetDeviceInfo(PhyIndex::FromRawChecked(idRaw)); }
+            static UCHAR          GetTesterIndex(UCHAR idRaw) noexcept { return GetTesterIndex(PhyIndex::FromRawChecked(idRaw)); }
+            static UCHAR          GetPhysicalIndex(UCHAR testerRaw) noexcept {
+                PhyIndex p = GetPhysicalIndex(TesterId::FromRawChecked(testerRaw));
+                return p.IsValid() ? p.value() : UCHAR_MAX;
+            }
+            // Handy one-stop: from tester (portIndex) -> a usable PhyIndex, plus guaranteed
+            // non-UOB getInstance. Prefer this at the top of Stage functions.
+            static PhyIndex       ResolvePhyIndex(UCHAR testerRaw) noexcept {
+                return GetPhysicalIndex(TesterId::FromRawChecked(testerRaw));
+            }
             //static UCHAR GetTesterIndex(UCHAR order);
 
-            int GetDevicePath(unsigned char idx, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned);
+            int GetDevicePath(PhyIndex idx, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned) noexcept;
+            // Legacy UCHAR overload; clamped internally; null ptr + off-by-one also eliminated.
+            int GetDevicePath(unsigned char idxRaw, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned) noexcept {
+                return GetDevicePath(PhyIndex::FromRawChecked(idxRaw), lpOutBuffer, nOutBufferSize, lpBytesReturned);
+            }
 
             /// <summary>
             /// Select SM3350 device
             /// </summary>
             /// <param name="idx">index number</param>
             /// <returns>0: Success or Error code</returns>
-            int DeviceSelect(UCHAR idx);
+            int DeviceSelect(PhyIndex idx) noexcept;
+            int DeviceSelect(UCHAR idxRaw) noexcept { return DeviceSelect(PhyIndex::FromRawChecked(idxRaw)); }
 
             /************************************************************************/
             /* SMI SM3350 VCMD                                                       */
@@ -224,6 +310,18 @@ namespace spark
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
             int UFSReadID(PCHAR pData);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsReadAging(PCHAR pData);
+            /// <summary>
+            /// Query sm3350 information
+            /// </summary>
+            /// <param name="pData">Target Response buffer address</param>
+            /// <returns>0: Success or Error code</returns>
+            int UfsReadQ100(PCHAR pData);
         public:
             PCHAR m_szDevicePath = nullptr;
 

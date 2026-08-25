@@ -4,6 +4,7 @@
 #include "DialogAdapter.h"
 #include "SettingsService.h"
 #include <cerrno>
+#include <vector>   // P2-9 fix: std::vector for exception-safe temp buffers in WCharToChar / CharToWChar
 
 CString CPubFunc::IntToHex(UINT nValue, BOOL bUppercase, int nDigits)
 {
@@ -68,38 +69,42 @@ bool CPubFunc::WCharToChar(const WCHAR* wSrc, size_t wSrcLen, char* cDest, size_
         return false;
     }
 
-    size_t tempBufSize = wSrcLen * 3;
-    char* tempBuf = new char[tempBufSize];
-    memset(tempBuf, 0, tempBufSize);
+    // P2-9 fix: replace raw new[]/delete[] pair with std::vector<char> for
+    // 100% exception safety.  vector(size_t) value-initialises every char to
+    // 0, so the explicit memset(0) is no longer needed.  If any C++ exception
+    // is thrown later (WideCharToMultiByte helper wrappers, future /permissive
+    // STL code that throws, std::bad_alloc on extreme resizing, etc.), the
+    // vector destructor runs during stack unwinding and frees the buffer —
+    // no leak possible.
+    const size_t tempBufSize = wSrcLen * 3;
+    std::vector<char> tempBuf(tempBufSize);
 
     int convertLen = WideCharToMultiByte(
         codePage,
         0,
         wSrc,
         static_cast<int>(wSrcLen),
-        tempBuf,
+        tempBuf.data(),
         static_cast<int>(tempBufSize),
         nullptr,
         nullptr);
 
     if (convertLen == 0)
     {
-        delete[] tempBuf;
         memset(cDest, 0, cDestLen);
         return false;
     }
 
     if (static_cast<size_t>(convertLen) >= cDestLen)
     {
-        memcpy(cDest, tempBuf, cDestLen);
+        memcpy(cDest, tempBuf.data(), cDestLen);
     }
     else
     {
-        memcpy(cDest, tempBuf, convertLen);
+        memcpy(cDest, tempBuf.data(), convertLen);
         memset(cDest + convertLen, 0, cDestLen - convertLen);
     }
 
-    delete[] tempBuf;
     return true;
 }
 
@@ -110,36 +115,36 @@ bool CPubFunc::CharToWChar(const char* cSrc, size_t cSrcLen, WCHAR* wDest, size_
         return false;
     }
 
-    size_t tempBufSize = cSrcLen;
-    WCHAR* tempBuf = new WCHAR[tempBufSize];
-    ZeroMemory(tempBuf, tempBufSize * sizeof(WCHAR));
+    // P2-9 fix: replace raw new[]/delete[] pair with std::vector<WCHAR> for
+    // 100% exception safety (see WCharToChar above for rationale).  Each
+    // WCHAR is value-initialised to 0, so ZeroMemory is no longer needed.
+    const size_t tempBufSize = cSrcLen;
+    std::vector<WCHAR> tempBuf(tempBufSize);
 
     int convertLen = MultiByteToWideChar(
         codePage,
         0,
         cSrc,
         static_cast<int>(cSrcLen),
-        tempBuf,
+        tempBuf.data(),
         static_cast<int>(tempBufSize));
 
     if (convertLen == 0)
     {
-        delete[] tempBuf;
         ZeroMemory(wDest, wDestLen * sizeof(WCHAR));
         return false;
     }
 
     if (static_cast<size_t>(convertLen) >= wDestLen)
     {
-        memcpy(wDest, tempBuf, wDestLen * sizeof(WCHAR));
+        memcpy(wDest, tempBuf.data(), wDestLen * sizeof(WCHAR));
     }
     else
     {
-        memcpy(wDest, tempBuf, convertLen * sizeof(WCHAR));
+        memcpy(wDest, tempBuf.data(), convertLen * sizeof(WCHAR));
         ZeroMemory(wDest + convertLen, (wDestLen - convertLen) * sizeof(WCHAR));
     }
 
-    delete[] tempBuf;
     return true;
 }
 

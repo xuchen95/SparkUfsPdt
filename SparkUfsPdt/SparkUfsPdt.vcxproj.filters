@@ -102,6 +102,9 @@
     <ClInclude Include="StagePipeline.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CDialogPortMapping.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SparkUfsPdt.cpp">
@@ -159,6 +162,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="EventBus.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CDialogPortMapping.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

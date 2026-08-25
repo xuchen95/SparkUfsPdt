@@ -10,6 +10,7 @@
 #define IDD_DIALOG1                     136
 #define IDD_DIALOG_BASE_SET             136
 #define IDR_MAINMENU                    200
+#define IDD_DLG_PORT_MAPPING            202
 #define IDC_BTN_PDT_SETTING             1000
 #define IDC_BTN_SCAN_DEVICE             1001
 #define IDC_BTN_START_PDT               1002
@@ -73,19 +74,24 @@
 #define IDC_CHECK_BURNIN_TEST           1060
 #define IDC_COMBO1                      1061
 #define IDC_CB_COM_SEL                  1061
+#define IDC_PM_CB_TESTER_ID             1061
 #define IDC_S_PIC_COM_LINKED            1062
 #define IDC_CHECK_SET_FACTORY_CMD_LOG   1063
 #define IDC_BTN_READ_ISP_VER            1064
 #define IDC_EDIT_READ_ISP_VER           1065
+#define IDC_PM_BTN_SCAN_DEVICE          1066
+#define IDC_PM_EDIT_TESTER_ID           1067
+#define IDC_PM_BTN_WRITE_TESTER_ID      1068
 #define ID_SETTING_CONFIG               32771
+#define ID_SETTING_PORTMAPPING          32772
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        202
-#define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1066
+#define _APS_NEXT_RESOURCE_VALUE        204
+#define _APS_NEXT_COMMAND_VALUE         32773
+#define _APS_NEXT_CONTROL_VALUE         1069
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -48,11 +48,27 @@
 #define SECTOR2BYTE(x)              ((x) << 9)
 #define BYTE2SECTOR(x)              ((x + 511) >> 9)
 
-#define FLAG_WRITE_MDT (0xEC)
-#define FLAG_WRITE_PSN (0xEE)
-#define FLAG_CHECK_ISP (0xA4)
-#define FLAG_CHECK_SRAM1 (0xA6)
-#define FLAG_CHECK_SRAM2 (0xA7)
+#define FLAG_WRITE_MDT      (0xEC)
+#define FLAG_WRITE_PSN      (0xEE)
+#define FLAG_CHECK_ISP      (0xA4)
+#define FLAG_CHECK_SRAM1    (0xA6)
+#define FLAG_CHECK_SRAM2    (0xA7)
+#define FLAG_READ_AGING     (0x91)
+
+#define FLAG_SET_PE             (0xF0)
+#define FLAG_SET_LHTDR_WRITE    (0xF1)
+#define FLAG_SET_LHTDR_READ     (0xF2)
+#define FLAG_SET_HTOL           (0xF3)
+#define FLAG_SET_EMC            (0xF4)
+#define FLAG_GET_AECQ_INFO      (0xF5)
+#define FLAG_GET_DETAIL_INFO    (0xF6)
+#define FLAG_CLR_NEXT_OPTION    (0xF7)
+#define FLAG_CLR_PE             (0xF8)
+#define FLAG_CLR_LHTDR_WRITE    (0xF9)
+#define FLAG_CLR_HTOL           (0xFA)
+#define FLAG_CLR_EMC            (0xFB)
+
+
 
 class CSm3350Vcmds
 {
@@ -106,7 +122,7 @@ public:
     int UfsVcmdStart(PCHAR pData = nullptr);
     int UfsVcmdEnd(PCHAR pData= nullptr);
     int UfsVcmdWrite(PCHAR pData, UCHAR flag);
-    int UfsVcmdRead(PCHAR pData, UCHAR flag);
+    int UfsVcmdRead(PCHAR pData, UCHAR flag, int len);
 
     int UfsWriteSramMp(PCHAR pData, UINT nSectorCnt);
     int UfsReadCid(PCHAR pData, int SectCnt);

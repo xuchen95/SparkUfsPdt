@@ -28,9 +28,16 @@ static uint64_t gu64DeviceBmp = 0;
 static uint8_t gu08DeviceSel = 0;
 static ST_DEVICE_INFO gstDeviceInfo[MAX_DEVICE_CNT];
 
-static uint8_t gu08TesterCnt;
+static uint8_t gu08TesterCnt = 0;
 //static uint8_t gu08TesterPerLun[MAX_TESTER_LUN];
-static uint8_t gu08TesterMap[MAX_DEVICE_CNT];
+// P1-2 + P1-3 root-cure: initialize TesterMap with UCHAR_MAX (0xFF) so that
+// "empty slot" is correctly represented even on first EnumSm3350 call.
+// (Previously zero-initialized static storage meant the `== UCHAR_MAX`
+// write-gate in EnumSm3350 was NEVER traversed, and the map never built.)
+static uint8_t gu08TesterMap[MAX_DEVICE_CNT] = {
+    0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
+    0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF
+};
 
 void ClearDeviceInfos(void)
 {
@@ -49,6 +56,11 @@ void ClearDeviceInfos(void)
         gstDeviceInfo[i].szDriveName[0] = '\0';
         ZeroMemory(&gstDeviceInfo[i].sdn, sizeof(gstDeviceInfo[i].sdn));
     }
+    // P1-3 root-cure: always reset the physical->tester map to all-UCHAR_MAX
+    // so subsequent EnumSm3350 passes can re-populate it using the same
+    // `== UCHAR_MAX` write-gate they already check.
+    memset(gu08TesterMap, UCHAR_MAX, sizeof gu08TesterMap);
+    gu08TesterCnt = 0;
     gu64DeviceBmp = gu08DeviceCnt = gu08DeviceSel = 0;
 }
 
@@ -363,20 +375,93 @@ int spark::sm3350::CSparkSm3350Util::EnumSm3350(int nDriverMode /*= 0*/)
     FillMemory(gu08TesterMap, sizeof(gu08TesterMap), 0xFF);
     //ZeroMemory(gu08TesterPerLun, sizeof(gu08TesterPerLun));
 
-    for (size_t i = 0; i < gu08DeviceCnt; i++)
+    // P2-6 fix 1/3: loop variable `i` changed from size_t → UCHAR.
+    // Before: size_t triggered C4267 ("size_t → UCHAR potential data loss") when
+    //         implicitly converted to UCHAR by getInstance(i) and static_cast<UCHAR>(i).
+    // After : i is already a UCHAR. gu08DeviceCnt is guaranteed <= MAX_DEVICE_CNT (16)
+    //         by the USB enumeration, so UCHAR overflow is impossible (user confirmed
+    //         the platform will never expand past 256 devices).
+    for (UCHAR i = 0; i < gu08DeviceCnt; i++)
     {
-        
         CSparkSm3350Util& sm3350 = getInstance(i);
 
-        sm3350.DeviceSelect(i);
+        // P2-3 fix 1/2: pre-clear the UfsReadPortInfo output byte BEFORE this
+        // iteration so a successful slot N can never leak its port ID into a
+        // subsequent failing slot N+1 that skips the actual UfsReadPortInfo call.
+        // (UfsReadPortInfo only overwrites pPortInfo on the SUCCESS path, so
+        //  previous bytes survive when the function fails and returns early.)
+        //
+        // P2-6 fix 2/3: use (CHAR)-1 (NOT (CHAR)UCHAR_MAX nor bare UCHAR_MAX).
+        //
+        // Why not (CHAR)UCHAR_MAX? → VC /W4 raises C4310 "cast truncates
+        // constant value" because UCHAR_MAX=0xFF lies outside the signed-char
+        // range [-128..127] even though the bit-pattern is identical.
+        // Why not UCHAR_MAX bare? → VC raises C4309 "truncation of constant
+        // value" (the original P2-6 part we're fixing here).
+        //
+        // (CHAR)-1 → in two's complement signed-8bit, -1 has bit pattern
+        // 0xFF, which is byte-for-byte identical to UCHAR_MAX. Runtime
+        // behaviour is unchanged (FillMemory() below fills gu08TesterMap with
+        // 0xFF too, so the two clearing patterns remain perfectly in sync).
+        pPortInfo[0x212] = (CHAR)-1;
+
+        // P2-3 fix 2/2: check return values of both DeviceSelect and
+        // UfsReadPortInfo. Previously both were silently discarded, causing
+        // two failure modes:
+        //   (a) DeviceSelect(i) failed but UfsReadPortInfo still ran against
+        //       the PREVIOUSLY selected physical slot, so gu08TesterMap[i] got
+        //       a cross-slotted ID;
+        //   (b) UfsReadPortInfo failed and left stale pPortInfo bytes from the
+        //       previous loop iteration, which caused ALL subsequent slots to
+        //       inherit that stale ID (duplicate tester IDs -> cross-slot routing).
+        int ds = sm3350.DeviceSelect(static_cast<UCHAR>(i));
+        if (ds != ERROR_SUCCESS) continue;
+        int rp = sm3350.UfsReadPortInfo(pPortInfo);
+        if (rp != ERROR_SUCCESS) continue;
+
         UCHAR u08Id;
-		sm3350.UfsReadPortInfo(pPortInfo);
-        //ReadPortID
+        //ReadPortID (buffer has been freshly populated by the successful call above)
         u08Id = pPortInfo[0x212];
         if (u08Id < MAX_DEVICE_CNT)
         {
             if (gu08TesterMap[i] == UCHAR_MAX)
             {
+                // P2-5 fix: TesterId uniqueness check.
+                // If two phys slots both return the same tester-id (jumper
+                // mis-wiring / UfsWritePortInfo duplicate write), a naive write
+                // of gu08TesterMap[] stores the id twice → GetPhysicalIndex()
+                // first-fit walk always returns the 1st slot, so the 2nd slot's
+                // tasks silently run on the 1st device: serial numbers, ISPs
+                // and CIDs get overwritten, silently destroying production
+                // traceability.
+                //
+                // Resolution: linear scan [0, i) for any prior slot that
+                // already carries this id. If found, leave gu08TesterMap[i] =
+                // UCHAR_MAX and do NOT increment gu08TesterCnt. This causes
+                // the duplicate physical slot to appear unmapped → it simply
+                // won't be exposed to the UI / task pipeline, so zero
+                // cross-slot corruption happens.
+                bool duplicate = false;
+                // P2-6 fix 3/3: uniqueness-check loop variable `j` changed from
+                // size_t → UCHAR. Before: size_t j implicit-narrowed to UCHAR
+                // when used as gu08TesterMap[j] index → C4267 warning.  After:
+                // j < i < gu08DeviceCnt <= 16 < UCHAR_MAX, so no overflow.
+                for (UCHAR j = 0; j < i; j++)
+                {
+                    if (gu08TesterMap[j] == u08Id)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate)
+                {
+                    // Optional future work: log via SparkLog("WARN: duplicate
+                    // tester-id %u at phys=%u, first seen at phys=%u\n"), or
+                    // SetLastError(ERROR_DUPLICATE_TAG) so the caller can
+                    // surface a warning to the operator (jumper probably wrong).
+                    continue;
+                }
                 gu08TesterMap[i] = u08Id;
                 gu08TesterCnt++;
             }
@@ -386,9 +471,25 @@ int spark::sm3350::CSparkSm3350Util::EnumSm3350(int nDriverMode /*= 0*/)
     return gu08TesterCnt;
 }
 
-int spark::sm3350::CSparkSm3350Util::GetDevicePath(unsigned char idx, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned)
+int spark::sm3350::CSparkSm3350Util::GetDevicePath(PhyIndex idx, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned) noexcept
 {
-    if (idx > gu08DeviceCnt)
+    // P1-2/P2-1 root-cure:
+    //  * fail fast if caller forgot to provide lpBytesReturned (common when quering size first)
+    //  * reject invalid/untested physical indices; idx.value() is already < MAX_DEVICE_CNT by construction
+    //  * reject off-by-one: idx.value() MUST be strictly less than gu08DeviceCnt (was `idx > gu08DeviceCnt`
+    //    which allows idx==gu08DeviceCnt to pass through)
+    //  * guard against gstDeviceInfo[i].pDetailData being null
+    if (lpBytesReturned == nullptr)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+    *lpBytesReturned = 0;
+    if (!idx.IsValid())
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+    UCHAR i = idx.value();
+    if (i >= gu08DeviceCnt)
     {
 #if TOOLSET_VER > 141
         return ERROR_NO_SUCH_DEVICE;
@@ -396,20 +497,27 @@ int spark::sm3350::CSparkSm3350Util::GetDevicePath(unsigned char idx, LPVOID lpO
         return 433L;
 #endif // TOOLSET_VER
     }
-
+    if (gstDeviceInfo[i].pDetailData == nullptr)
+    {
+        return ERROR_NO_SUCH_DEVICE;
+    }
+    const char* devPath = gstDeviceInfo[i].pDetailData->DevicePath;
+    if (devPath == nullptr)
+    {
+        return ERROR_NO_SUCH_DEVICE;
+    }
+    DWORD len = (DWORD)(strlen(devPath) + 1);
     if (lpOutBuffer == nullptr)
     {
-        *lpBytesReturned = (strlen(gstDeviceInfo[idx].pDetailData->DevicePath) + 1);
+        *lpBytesReturned = len;
+        return ERROR_SUCCESS;
     }
-    else if (strlen(gstDeviceInfo[idx].pDetailData->DevicePath) > nOutBufferSize)
+    if (len > nOutBufferSize)
     {
         return ERROR_NOT_ENOUGH_MEMORY;
     }
-    else
-    {
-        memcpy((char*)lpOutBuffer, (char*)gstDeviceInfo[idx].pDetailData->DevicePath, nOutBufferSize);
-    }
-
+    memcpy((char*)lpOutBuffer, devPath, len);
+    *lpBytesReturned = len;
     return ERROR_SUCCESS;
 }
 
@@ -425,38 +533,55 @@ PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo()
     }
 }
 
-UCHAR spark::sm3350::CSparkSm3350Util::GetTesterIndex(UCHAR id)
+// Primary (root-cure) implementation #1: physical slot -> PST_DEVICE_INFO.
+// Fast O(1) path. Preferred for stage code + legacy Scan loop iterators.
+PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo(PhyIndex phys) noexcept
 {
-    return gu08TesterMap[id];
+    if (!phys.IsValid()) return nullptr;
+    UCHAR i = phys.value();
+    if (i >= gu08DeviceCnt) return nullptr;   // prevent reading uninitialized gstDeviceInfo[i]
+    return &gstDeviceInfo[i];
 }
 
-UCHAR spark::sm3350::CSparkSm3350Util::GetPhysicalIndex(UCHAR testerIdx)
+// Primary (root-cure) implementation #2: tester-id -> PST_DEVICE_INFO.
+// P2-4 fix 2/3: previously this function did `gu08TesterMap[id.value()]` directly,
+// treating the tester-id argument as a PHYSICAL index. It now performs a proper
+// reverse lookup (tester -> phys) via GetPhysicalIndex, then delegates to the
+// PhyIndex overload above.
+PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo(TesterId id) noexcept
 {
-    for (UCHAR i = 0; i < gu08DeviceCnt; i++)
+    PhyIndex p = GetPhysicalIndex(id);
+    if (!p.IsValid()) return nullptr;
+    return GetDeviceInfo(p);
+}
+
+// Primary (root-cure) implementation: phys -> tester lookup.
+// Input: physical-slot index (range-checked by construction).
+// Returns: tester id at that slot, or UCHAR_MAX if empty/unmapped.
+UCHAR spark::sm3350::CSparkSm3350Util::GetTesterIndex(PhyIndex phys) noexcept
+{
+    if (!phys.IsValid()) return UCHAR_MAX;
+    return gu08TesterMap[phys.value()];              // already [0,15] — zero OOB
+}
+
+// Primary (root-cure) implementation: tester -> physical lookup.
+// Returns: a valid PhyIndex (never produces UCHAR_MAX-based OOB at the call site).
+spark::sm3350::PhyIndex spark::sm3350::CSparkSm3350Util::GetPhysicalIndex(TesterId tester) noexcept
+{
+    if (!tester.IsValid()) return PhyIndex::Invalid();
+    for (UCHAR i = 0; i < gu08DeviceCnt; ++i)        // by construction i < MAX_DEVICE_CNT, so gu08TesterMap[i] safe
     {
-        if (gu08TesterMap[i] == testerIdx)
+        if (gu08TesterMap[i] == tester.value())
         {
-            return i;
+            return PhyIndex::FromTrusted(i);         // i < gu08DeviceCnt <= MAX_DEVICE_CNT
         }
     }
-    return UCHAR_MAX;
+    return PhyIndex::Invalid();
 }
 
-
-PST_DEVICE_INFO spark::sm3350::CSparkSm3350Util::GetDeviceInfo(UCHAR id)
+int spark::sm3350::CSparkSm3350Util::DeviceSelect(PhyIndex idx) noexcept
 {
-    if (gu08TesterMap[id] != UCHAR_MAX)
-    {
-        return &gstDeviceInfo[gu08TesterMap[id]];
-    }
-
-    return nullptr;
-}
-
-
-int spark::sm3350::CSparkSm3350Util::DeviceSelect(UCHAR idx /*= 0*/)
-{
-    if (idx >= gu08DeviceCnt)
+    if (!idx.IsValid())
     {
 #if TOOLSET_VER > 141
         return ERROR_NO_SUCH_DEVICE;
@@ -464,13 +589,27 @@ int spark::sm3350::CSparkSm3350Util::DeviceSelect(UCHAR idx /*= 0*/)
         return 433L;
 #endif // TOOLSET_VER
     }
-    else
+    UCHAR i = idx.value();
+    if (i >= gu08DeviceCnt)
     {
-        m_szDevicePath = gstDeviceInfo[idx].pDetailData->DevicePath;
-        //m_szDevicePath = gstDeviceInfo[idx].szPhyDrivePath;
-        TRACE("%s\n", m_szDevicePath);
-        return m_sm3350Vcmds.OpenDevice(m_szDevicePath, gu08DriverMode);
+#if TOOLSET_VER > 141
+        return ERROR_NO_SUCH_DEVICE;
+#else
+        return 433L;
+#endif // TOOLSET_VER
     }
+    if (gstDeviceInfo[i].pDetailData == nullptr || gstDeviceInfo[i].pDetailData->DevicePath == nullptr)
+    {
+#if TOOLSET_VER > 141
+        return ERROR_NO_SUCH_DEVICE;
+#else
+        return 433L;
+#endif // TOOLSET_VER
+    }
+    m_szDevicePath = gstDeviceInfo[i].pDetailData->DevicePath;
+    //m_szDevicePath = gstDeviceInfo[idx].szPhyDrivePath;
+    TRACE("%s\n", m_szDevicePath);
+    return m_sm3350Vcmds.OpenDevice(m_szDevicePath, gu08DriverMode);
 }
 
 int spark::sm3350::CSparkSm3350Util::UpiuForceRom(PCHAR pData)
@@ -482,6 +621,7 @@ int spark::sm3350::CSparkSm3350Util::UpiuForceRom(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsUpiuForceRomCodeModeForUfs(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -494,6 +634,7 @@ int spark::sm3350::CSparkSm3350Util::VccOffForceRom(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVccOffForceRomModeUfs(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -506,6 +647,7 @@ int spark::sm3350::CSparkSm3350Util::UfsPowerOn(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsPowerOn(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResponse())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -518,6 +660,7 @@ int spark::sm3350::CSparkSm3350Util::UfsPowerOff(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsPowerOff(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResponse())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -528,6 +671,7 @@ int spark::sm3350::CSparkSm3350Util::GetCmdResp()
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -538,6 +682,7 @@ int spark::sm3350::CSparkSm3350Util::EnterH8(PCHAR pData)
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsEnterH8(pData))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -548,6 +693,7 @@ int spark::sm3350::CSparkSm3350Util::ExitH8(PCHAR pData)
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsExitH8(pData))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -558,6 +704,7 @@ int spark::sm3350::CSparkSm3350Util::ReadCurrent(PCHAR pData)
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadCurrent(pData))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
 	return ERROR_SUCCESS;
 }
 
@@ -570,6 +717,7 @@ int spark::sm3350::CSparkSm3350Util::UfsMpStartMode(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsMpStartMode(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -581,6 +729,7 @@ int spark::sm3350::CSparkSm3350Util::UfsWrite1024KIspMp(PCHAR pData, UINT nSecto
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsWrite1024KIspMp(pData, nSectorCnt, bEraseAllBlock))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -594,6 +743,7 @@ int spark::sm3350::CSparkSm3350Util::UfsMpExit(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
 
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -606,6 +756,7 @@ int spark::sm3350::CSparkSm3350Util::UfsCardInit(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsCardInit(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -618,6 +769,7 @@ int spark::sm3350::CSparkSm3350Util::UfsReadPortInfo(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadPortInfo(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -627,9 +779,10 @@ int spark::sm3350::CSparkSm3350Util::UfsWritePortInfo(PCHAR pData)
     int ret;
     do
     {
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadPortInfo(pData))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsWritePortInfo(pData))) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -645,6 +798,7 @@ int spark::sm3350::CSparkSm3350Util::UfsSetSrialNumberString(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -659,6 +813,7 @@ int spark::sm3350::CSparkSm3350Util::UfsSetManuDate(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -669,10 +824,11 @@ int spark::sm3350::CSparkSm3350Util::UfsCheckIsp(PCHAR pData)
     do
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_ISP))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_CHECK_ISP,8))) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -683,11 +839,12 @@ int spark::sm3350::CSparkSm3350Util::UfsCheckSram2(PCHAR pData1, PCHAR pData2)
     do
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData1, FLAG_CHECK_SRAM1))) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData2, FLAG_CHECK_SRAM2))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData1, FLAG_CHECK_SRAM1,8))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData2, FLAG_CHECK_SRAM2,8))) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
         //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -699,6 +856,7 @@ int spark::sm3350::CSparkSm3350Util::UfsWriteSramMp(PCHAR pData, UINT nSectorCnt
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsWriteSramMp(pData, nSectorCnt))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -710,6 +868,7 @@ int spark::sm3350::CSparkSm3350Util::UfsReadSramResult(PCHAR pData, UINT nSector
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData,1,0,8))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -721,6 +880,7 @@ int spark::sm3350::CSparkSm3350Util::UfsReadCidInfo(PCHAR pData, UINT nSectorCnt
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadCid(pData, nSectorCnt))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -733,6 +893,7 @@ int spark::sm3350::CSparkSm3350Util::UfsGetGeometry(PCHAR pData)
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadGeometryDescriptor(pData, dwSpecLen))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -744,6 +905,7 @@ int spark::sm3350::CSparkSm3350Util::UFSReadPRV(PCHAR pData)
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsReadStringDescriptor(pData, 0x04,0x0A))) return ret;
     } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 
@@ -759,6 +921,43 @@ int spark::sm3350::CSparkSm3350Util::UFSReadID(PCHAR pData)
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
 
     } while (0);
+    SM3350_CMD_DELAY();
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsReadAging(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_READ_AGING,8))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
+    } while (0);
+    SM3350_CMD_DELAY();
+    return ERROR_SUCCESS;
+}
+
+int spark::sm3350::CSparkSm3350Util::UfsReadQ100(PCHAR pData)
+{
+    TRACE_FUNC();
+    int ret;
+    do
+    {
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsTestUnitReady(pData, 0))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData, 0x00,1,1))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData, FLAG_GET_AECQ_INFO,1,1))) return ret;
+         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData, FLAG_SET_LHTDR_WRITE, 1, 1))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData, FLAG_SET_LHTDR_READ, 1, 1))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.GetCmdResp())) return ret;
+    } while (0);
+    SM3350_CMD_DELAY();
     return ERROR_SUCCESS;
 }
 

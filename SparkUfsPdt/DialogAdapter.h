@@ -7,6 +7,8 @@
 #include "SettingsService.h"
 #include "EventBus.h"
 #include "EventMessages.h"
+// Pure policy helpers for pass/fail count decisions (issue #1).
+#include "TaskCountPolicy.h"
 
 class DialogAdapter : public ISettingsProvider, public ILogger, public IUiNotifier
 {
@@ -69,9 +71,18 @@ public:
 		// Use the dialog window handle as the target
 		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
 
-		// If this progress represents completion (100%) post UI commands for counts and UI update
-	// Note: Do not alter active task counts here. Task lifecycle accounting is handled
-	// centrally at task entry/exit to avoid duplicate or missing increments/decrements.
+		// --------------------------------------------------------------------
+		// Issue #1 (P0-2): Each task counts PASS exactly once, when the final
+		// PostTaskProgress reports progress>=100 and result==ERROR_SUCCESS.
+		// The final notification is sent by RunFtTaskImpl / RunQcTaskImpl when
+		// the whole pipeline exits cleanly. Intermediate progress updates with
+		// progress<100 MUST NOT bump the global pass counter.
+		// --------------------------------------------------------------------
+		if (TaskCountPolicy::ShouldIncrementPassOnProgress(progress, result))
+		{
+			PostUiCommand(spark::ufspdt::UICommand::IncrementPassCount, portIndex, 1, CString());
+			PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
+		}
 	}
 
 	// Post a UI-level command (intent) to be executed on the dialog's UI thread
@@ -106,11 +117,25 @@ public:
 		evt.status = std::string(conv);
 		spark::ufspdt::EventBus::Instance().Publish(dlg_->GetSafeHwnd(), evt);
 
-		// Post UI commands for failure: decrement active tasks and increment fail count
-	// Only post counts/status; do not touch active task counter here. The worker
-	// invocation is responsible for decrementing the active task count when it exits.
-	PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
-	PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
+		// --------------------------------------------------------------------
+		// Issue #1 (P1-4): Stage-level PostTaskStatus calls are for UI display
+		// only. The global FAIL counter is incremented EXACTLY ONCE per task
+		// by the outermost RunPdtTask wrapper after the pipeline returns.
+		// Keeping the increment here (as the old code did) caused N+1 fail
+		// increments per failing task: one for every stage that failed, plus
+		// one for the final PostTaskStatus in RunXxxTaskImpl.
+		// TaskCountPolicy documents that stage status never bumps the counter.
+		// --------------------------------------------------------------------
+		if (TaskCountPolicy::ShouldIncrementFailOnStageStatus(result))
+		{
+			// Intentionally unreachable with current policy. Kept as a hook
+			// in case stage-level counting is ever re-enabled intentionally.
+			PostUiCommand(spark::ufspdt::UICommand::IncrementFailCount, portIndex, 1, CString());
+		}
+		// Status bar refresh is still useful: UI shows the failing stage name
+		// to the operator even though the numeric counter is updated later by
+		// the wrapper's task-final decision.
+		PostUiCommand(spark::ufspdt::UICommand::UpdateStatusBar, portIndex, 0, CString());
 	}
 
 	void PostPortSerial(int portIndex, const CString& serial) override

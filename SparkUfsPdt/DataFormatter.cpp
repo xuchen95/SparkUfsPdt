@@ -4,15 +4,15 @@
 
 using namespace spark::ufspdt;
 
-std::array<BYTE, 64> DataFormatter::FormatSnData(const char meto[4], const WCHAR* timeStr, const WCHAR* psn)
+std::array<BYTE, 64> DataFormatter::FormatSnData(const char meto1[4], const char meto2[4], const WCHAR* timeStr, const WCHAR* psn)
 {
 	std::array<BYTE, 64> out = {0};
 	out[0] = 0x40;
 	out[1] = 0x05;
 	int offset = 2;
-	if (meto)
+	if (meto1)
 	{
-		memcpy(out.data() + offset, meto, 4);
+		memcpy(out.data() + offset, meto1, 4);
 	}
 	offset += 4;
 
@@ -28,8 +28,14 @@ std::array<BYTE, 64> DataFormatter::FormatSnData(const char meto[4], const WCHAR
 	{
 		memcpy(out.data() + offset, psn, 16);
 	}
+	offset += 16;
+	if(meto2)
+	{
+		memcpy(out.data() + offset, meto2, 4);
+	}
+	offset += 4;
 	// rest: fill with alternating 0x00, 0x20 as original
-	for (int i = offset + 16; i < 64; i += 2)
+	for (int i = offset; i < 60; i += 2)
 	{
 		out[i] = 0x00;
 		if (i + 1 < 64) out[i + 1] = 0x20;

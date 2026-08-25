@@ -149,9 +149,6 @@ void SettingsService::SaveBaseSettingToIni(const CString& path)
 
 void SettingsService::LoadRemoteSnToMainParam()
 {
-	if (!baseOption_.bSnSeparateIni)
-		return;
-
 	if (strlen(baseOption_.szRemoteSnPath) == 0)
 		return;
 
@@ -162,13 +159,22 @@ void SettingsService::LoadRemoteSnToMainParam()
 	CHAR buffer[256] = {};
 	int len = 0;
 
-	ZeroMemory(sharedOption_.mainPrm.meto, sizeof(sharedOption_.mainPrm.meto));
-	len = GetPrivateProfileString("TEST", "Meto", "", buffer, _countof(buffer), iniPath);
+	ZeroMemory(sharedOption_.mainPrm.meto1, sizeof(sharedOption_.mainPrm.meto1));
+	len = GetPrivateProfileString("TEST", "Meto1", "", buffer, _countof(buffer), iniPath);
 	if (len > 0)
 	{
 		UINT32 val;
 		val = strtoul(buffer,nullptr,16);
-		memcpy(sharedOption_.mainPrm.meto,&val,sizeof(val));
+		memcpy(sharedOption_.mainPrm.meto1,&val,sizeof(val));
+	}
+
+	ZeroMemory(sharedOption_.mainPrm.meto2, sizeof(sharedOption_.mainPrm.meto2));
+	len = GetPrivateProfileString("TEST", "Meto2", "", buffer, _countof(buffer), iniPath);
+	if (len > 0)
+	{
+		UINT32 val;
+		val = strtoul(buffer,nullptr,16);
+		memcpy(sharedOption_.mainPrm.meto2,&val,sizeof(val));
 	}
 
 	ZeroMemory(buffer, sizeof(buffer));
@@ -185,8 +191,8 @@ void SettingsService::LoadRemoteSnToMainParam()
 		sharedOption_.mainPrm.psn_end = strtoul(buffer, nullptr, 16);
 	}
 
-	ZeroMemory(buffer, sizeof(buffer));
 	ZeroMemory(sharedOption_.mainPrm.psn_mask, sizeof(sharedOption_.mainPrm.psn_mask));
+	ZeroMemory(buffer, sizeof(buffer));
 	len = GetPrivateProfileString("TEST", "SerialNumber_Mask", "", buffer, _countof(buffer), iniPath);
 	if (len > 0)
 	{

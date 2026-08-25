@@ -1,4 +1,4 @@
-﻿// CDialogSetting.cpp: 实现文件
+// CDialogSetting.cpp: 实现文件
 //
 
 #include "pch.h"
@@ -118,15 +118,6 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 		strcpy_s(pOption->mainPrm.pnm, sizeof(pOption->mainPrm.pnm), buffer);
 	}
 
-	pOption->mainPrm.psn_start = readUInt32("Main", "psn_start", pOption->mainPrm.psn_start);
-	pOption->mainPrm.psn_end = readUInt32("Main", "psn_end", pOption->mainPrm.psn_end);
-
-	readString("Main", "psn_mask", buffer, static_cast<DWORD>(sizeof(buffer)));
-	if (buffer[0] != '\0')
-	{
-		strcpy_s(pOption->mainPrm.psn_mask, sizeof(pOption->mainPrm.psn_mask), buffer);
-	}
-
 	readString("Main", "mdt", buffer, static_cast<DWORD>(sizeof(buffer)));
 	if (buffer[0] != '\0')
 	{
@@ -144,12 +135,6 @@ BOOL CDialogSetting::LoadFromIni(const CString& path, PUFS_OPTION pOption)
 	if (buffer[0] != '\0')
 	{
 		memcpy(pOption->mainPrm.mnm, buffer, sizeof(pOption->mainPrm.mnm));
-	}
-
-	readString("Main", "meto", buffer, static_cast<DWORD>(sizeof(buffer)));
-	if (buffer[0] != '\0')
-	{
-		CPubFunc::HexToBytes(CString(buffer), reinterpret_cast<BYTE*>(pOption->mainPrm.meto), sizeof(pOption->mainPrm.meto));
 	}
 
 	readString("Main", "szFlowName", buffer, static_cast<DWORD>(sizeof(buffer)));
@@ -361,14 +346,6 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain/*=true*/, boo
 		
 		// pnm - 字符串，保持原样
 		if (!writeValue(_T("Main"), _T("pnm"), CString(pOption->mainPrm.pnm))) return FALSE;
-
-		value.Format(_T("%08X"), pOption->mainPrm.psn_start);
-		if (!writeValue(_T("Main"), _T("psn_start"), value)) return FALSE;
-
-		value.Format(_T("%08X"), pOption->mainPrm.psn_end);
-		if (!writeValue(_T("Main"), _T("psn_end"), value)) return FALSE;
-
-		if (!writeValue(_T("Main"), _T("psn_mask"), CString(pOption->mainPrm.psn_mask))) return FALSE;
 		
 		// mdt - 二进制数据，按原样保存
 		if (!writeValue(_T("Main"), _T("mdt"), CString(pOption->mainPrm.mdt, sizeof(pOption->mainPrm.mdt)))) return FALSE;
@@ -378,9 +355,6 @@ BOOL CDialogSetting::SaveToFile(const CString& path, bool saveMain/*=true*/, boo
 		
 		// mnm - 二进制数据，按原样保存
 		if (!writeValue(_T("Main"), _T("mnm"), CString(pOption->mainPrm.mnm, sizeof(pOption->mainPrm.mnm)))) return FALSE;
-		
-		// meto - 转换为十六进制字符串
-		if (!writeValue(_T("Main"), _T("meto"), CPubFunc::BytesToHex(reinterpret_cast<const BYTE*>(pOption->mainPrm.meto), sizeof(pOption->mainPrm.meto)))) return FALSE;
 		
 		if (!writeValue(_T("Main"), _T("szFlowName"), CString(pOption->mainPrm.szFlowName))) return FALSE;
 	}

@@ -1,0 +1,11 @@
+--- FT snippet (FIXED mode) ---
+[FIXED] PASS  FT_both_null                 ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  FT_pBase_null_opt_valid      ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  FT_pBase_valid_opt_null      ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  FT_both_valid                ret=    0 (want     0) av=0 (want 0) 
+--- QC snippet (FIXED mode) ---
+[FIXED] PASS  QC_both_null                 ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  QC_pBase_null_opt_valid      ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  QC_pBase_valid_opt_null      ret=   87 (want    87) av=0 (want 0) 
+[FIXED] PASS  QC_both_valid                ret=    0 (want     0) av=0 (want 0) 
+=== TOTAL FIXED-mode failures: 0 (AVs caught during run: 0)

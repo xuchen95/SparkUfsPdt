@@ -22,7 +22,8 @@ typedef struct main_param
 	CHAR mdt[4];
 	CHAR prv[4];
 	CHAR mnm[8];
-	CHAR meto[4];
+	CHAR meto1[4];
+	CHAR meto2[4];
 
 }MAIN_PARAM, * PMAIN_PARAM;
 

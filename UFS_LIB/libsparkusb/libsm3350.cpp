@@ -193,7 +193,7 @@ int CSm3350Vcmds::UfsWrite1024KIspMp(PCHAR pData, uint32_t nSectorCnt, BOOL bEra
         }
         else
         {
-            TRACE("write fail\r\n");
+            TRACE("write fail! err:%x\r\n", nRet);
             break;
         }
     }
@@ -341,7 +341,9 @@ int CSm3350Vcmds::UfsRead10(PCHAR pData, uint32_t lba, uint16_t allocLen, UCHAR 
     m_Cdb.ufs3.u16OpCode = _byteswap_ushort(CMD_READ_10);
     m_Cdb.ufs3.uIdx = 0;
     m_Cdb.ufs3.lba = _byteswap_ulong(lba);
-    m_Cdb.ufs3.AllocLen = _byteswap_ulong(allocLen);
+    //m_Cdb.ufs3.lba = lba;
+    m_Cdb.ufs3.AllocLen = _byteswap_ulong(allocLen * 512);
+    //m_Cdb.ufs3.AllocLen = (allocLen * 512);
     m_Cdb.ufs3.uLen = Len;
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, Len, m_Cdb);
 }
@@ -618,7 +620,7 @@ int CSm3350Vcmds::UfsVcmdWrite(PCHAR pData, UCHAR flag)
     return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_OUT, pData, 0x08, m_Cdb);
 }
 
-int CSm3350Vcmds::UfsVcmdRead(PCHAR pData, UCHAR flag)
+int CSm3350Vcmds::UfsVcmdRead(PCHAR pData, UCHAR flag,int len)
 {
     if (pData == nullptr)
     {
@@ -627,8 +629,8 @@ int CSm3350Vcmds::UfsVcmdRead(PCHAR pData, UCHAR flag)
     ZeroMemory(&m_Cdb, sizeof(m_Cdb));
     m_Cdb.vcmd.u16OpCode = _byteswap_ushort(CMD_VCMD_READ);
     m_Cdb.vcmd.flag = flag;
-    m_Cdb.vcmd.uLen = 0x08;
-    return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, 0x08, m_Cdb);
+    m_Cdb.vcmd.uLen = len;
+    return m_pScsiCmds->ScsiSendCmd(SCSI_IOCTL_DATA_IN, pData, len, m_Cdb);
 }
 
 int CSm3350Vcmds::UfsWriteSramMp(PCHAR pData, UINT nSectorCnt)
