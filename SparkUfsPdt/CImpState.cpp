@@ -1315,12 +1315,13 @@ int CImpState::ReadAgingStage(int portIndex, pdt_log_config_t& lg)
     int ret = ERROR_SUCCESS;
     char ispString[16] = { 0 };
     char* pData = new char[512 * 48 * 2];
+	ZeroMemory(pData, 512 * 48 * 2);
 
     spark::sm3350::CSparkSm3350Util* sm3350 = GetSm3350OrInvalid(portIndex, lg);
     if (!sm3350) return lg.error_code;
     do
     {
-        if ((ret = sm3350->UfsReadAging(pData)) != ERROR_SUCCESS) break;
+        if ((ret = sm3350->UfsReadAging(pData, 48 * 2)) != ERROR_SUCCESS) break;
 
         char modulePath[MAX_PATH] = { 0 };
         if (GetModuleFileNameA(nullptr, modulePath, _countof(modulePath)) > 0)

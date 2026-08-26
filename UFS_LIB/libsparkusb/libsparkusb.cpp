@@ -925,14 +925,15 @@ int spark::sm3350::CSparkSm3350Util::UFSReadID(PCHAR pData)
     return ERROR_SUCCESS;
 }
 
-int spark::sm3350::CSparkSm3350Util::UfsReadAging(PCHAR pData)
+int spark::sm3350::CSparkSm3350Util::UfsReadAging(PCHAR pData, UINT nSectorCnt)
 {
     TRACE_FUNC();
     int ret;
     do
     {
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdStart())) return ret;
-        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_READ_AGING,8))) return ret;
+        //if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdRead(pData, FLAG_READ_AGING, nSectorCnt))) return ret;
+        if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsRead10(pData, 0x00910000, nSectorCnt,nSectorCnt))) return ret;
         if (ERROR_SUCCESS != (ret = m_sm3350Vcmds.UfsVcmdEnd())) return ret;
     } while (0);
     SM3350_CMD_DELAY();

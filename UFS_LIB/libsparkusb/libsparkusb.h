@@ -315,7 +315,7 @@ namespace spark
             /// </summary>
             /// <param name="pData">Target Response buffer address</param>
             /// <returns>0: Success or Error code</returns>
-            int UfsReadAging(PCHAR pData);
+            int UfsReadAging(PCHAR pData, UINT nSectorCnt);
             /// <summary>
             /// Query sm3350 information
             /// </summary>
